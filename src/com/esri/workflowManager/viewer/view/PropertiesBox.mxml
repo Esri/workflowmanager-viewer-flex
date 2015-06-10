@@ -1,0 +1,1045 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:components="com.esri.workflowManager.components.*"
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							xmlns:view="com.esri.workflowManager.viewer.view.*"
+							creationComplete="creationCompleteHandler()" 
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.AuxRecordDescription;
+			import com.esri.workflowManager.tasks.supportClasses.DataWorkspace;
+			import com.esri.workflowManager.tasks.supportClasses.DataWorkspaceDetails;
+			import com.esri.workflowManager.tasks.supportClasses.GroupInfo;
+			import com.esri.workflowManager.tasks.supportClasses.GroupMembership;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobInfo;
+			import com.esri.workflowManager.tasks.supportClasses.JobPriority;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobStatus;
+			import com.esri.workflowManager.tasks.supportClasses.JobType;
+			import com.esri.workflowManager.tasks.supportClasses.JobUpdateParameters;
+			import com.esri.workflowManager.tasks.supportClasses.JobVersionInfo;
+			import com.esri.workflowManager.tasks.supportClasses.UserInfo;
+			import com.esri.workflowManager.tasks.supportClasses.VersionInfo;
+			import com.esri.workflowManager.viewer.events.PropertiesDirtyEvent;
+			import com.esri.workflowManager.viewer.events.UpdateJobPropertiesEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.utils.WMUtil;
+			
+			import mx.binding.utils.ChangeWatcher;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.PropertyChangeEvent;
+			
+			[Bindable] private var _isValidAssignment:Boolean = true;
+			[Bindable] private var _jobAssignable:Boolean = false;
+			[Bindable] private var _canChangeVersion:Boolean = false;
+			[Bindable] private var _canChangeParentVersion:Boolean = false;
+			[Bindable] private var _showDataWorkspaceVersionsError:Boolean = false;
+			[Bindable] private var _jobVersions:ArrayCollection;
+			[Bindable] private var _jobParentVersions:ArrayCollection;
+			
+			private static const SDE_DEFAULT:String = "SDE.DEFAULT";
+			
+			private function creationCompleteHandler():void
+			{	
+				ChangeWatcher.watch(Model.instance, "selectedJob", selectedJobChangeHandler);
+			}
+			
+			private function selectedJobChangeHandler(event:PropertyChangeEvent):void
+			{				
+				lblOwnedBy.text = "";
+				lblAssignedTo.text = "";
+				lblPriority.text = "";
+				lblJobType.text = "";
+				lblStatus.text = "";
+				lblDataWorkspace.text = "";
+				lblVersion.text = "";
+				lblParentVersion.text = "";
+				
+				_isValidAssignment = true;
+				_canChangeVersion = false;
+				_canChangeParentVersion = false;
+				
+				var selectedJob:JobInfo = Model.instance.selectedJob;
+				if (selectedJob == null)
+				{
+					return;
+				}
+				
+				//assignment 
+				_jobAssignable = canAssignJob(selectedJob);				
+				if (!_jobAssignable)
+				{
+					setAssignedToLabel(selectedJob);
+					assignTree.users = new ArrayCollection();
+					assignTree.groups = new ArrayCollection();
+				}
+				else
+				{
+					lblAssignedTo.text = "";
+					populateAssignTree(selectedJob);
+				}
+				
+				//owned by
+				for each (var userInfo:UserInfo in Model.instance.users)
+				{
+					if (userInfo.userName == selectedJob.ownedBy)
+					{
+						cboOwnedBy.selectedItem = userInfo;
+						lblOwnedBy.text = userInfo.fullName;
+						break;
+					}
+				}
+				
+				//priority
+				for each (var priority:JobPriority in Model.instance.serviceInfo.jobPriorities)
+				{
+					if (priority.value == selectedJob.priority)
+					{
+						cboPriority.selectedItem = priority;
+						lblPriority.text = priority.name;
+						break;
+					}
+				}
+				
+				//job type
+				for each (var jobType:JobType in Model.instance.serviceInfo.jobTypes)
+				{
+					if (jobType.id == selectedJob.jobTypeId)
+					{
+						lblJobType.text = jobType.name;
+						break;
+					}
+				}
+				
+				//status
+				for each (var status:JobStatus in Model.instance.serviceInfo.jobStatuses)
+				{
+					if (status.id == selectedJob.status)
+					{
+						cboStatus.selectedItem = status;
+						lblStatus.text = status.caption;
+						break;
+					}
+				}
+				
+				//data workspace
+				if ((Model.instance.serviceInfo.dataWorkspaces.length == 0) 
+					|| (Model.instance.serviceInfo.dataWorkspaces[0].name != Model.resource("NoDataWorkspace")))
+				{
+					var emptyWorkspace:DataWorkspace = new DataWorkspace();
+					emptyWorkspace.id = "";
+					emptyWorkspace.name = Model.resource("NoDataWorkspace");
+					Model.instance.serviceInfo.dataWorkspaces.unshift(emptyWorkspace);						
+				}
+				for each (var dataWorkspace:DataWorkspace in Model.instance.serviceInfo.dataWorkspaces)
+				{
+					if (dataWorkspace.id == selectedJob.dataWorkspaceId)
+					{
+						lblDataWorkspace.text = dataWorkspace.name;
+						cboDataWorkspace.selectedItem =  dataWorkspace;
+						break;
+					}
+				}
+				
+				//data workspace details
+				if (selectedJob.versionExists)
+				{
+					updateDataWorkspaceDetails(selectedJob.versionInfo);
+				}
+				
+				//versions
+				updateVersions();				
+			}
+			
+			private function canAssignJob(selectedJob:JobInfo):Boolean
+			{
+				if (selectedJob.stage == JobStageEnum.CLOSED)
+				{
+					return false;
+				}
+				if (Model.instance.privileges.canAssignAnyJob)
+				{
+					return true;
+				}
+				if (Model.instance.privileges.canAssignGroupJob
+					|| Model.instance.privileges.canAssignIndividualJob)
+				{
+					// The job is assignable if any of the following are true:
+					//   - assigned to the current user
+					//   - assigned to any group of the current user
+					//   - assigned to any user within any group of the current user (only if canGroupJobAssign)
+					if (selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER)
+					{
+						if (selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+						{
+							return true;
+						}
+						if (Model.instance.privileges.canAssignGroupJob)
+						{
+							// Check if assigned to any user within any group of the current user
+							var assignableUsers:Array = Model.instance.users.filter(userFilter);
+							for each (var user:UserInfo in assignableUsers)
+							{
+								if (user.userName == selectedJob.assignedTo)
+								{
+									return true;
+								}
+							}
+						}
+					}
+					if (selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_GROUP)
+					{
+						// Check if assigned to any group of the current user
+						var assignableGroups:Array = Model.instance.groups.filter(groupFilter);
+						for each (var group:GroupInfo in assignableGroups)
+						{
+							if (group.name == selectedJob.assignedTo)
+							{
+								return true;
+							}
+						}
+					}
+				}
+				return false;
+			}
+			
+			private function setAssignedToLabel(selectedJob:JobInfo):void
+			{
+				var jobAssignedTo:String = selectedJob.assignedTo;
+				
+				if (selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_GROUP)
+				{
+					lblAssignedTo.text = jobAssignedTo;
+				}
+				else if (selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER)
+				{
+					var users:Array = Model.instance.users;	
+					for each (var user:UserInfo in users)
+					{
+						if (user.userName == jobAssignedTo)
+						{
+							lblAssignedTo.text = user.fullName;
+							break;
+						}
+					}
+				}
+				else
+				{
+					// unassigned
+					lblAssignedTo.text = Model.resource("Unassigned");
+				}			
+			}
+			
+			private function populateAssignTree(selectedJob:JobInfo):void
+			{
+				var assignmentUsers:Array = Model.instance.users.filter(userFilter);
+				var assignmentGroups:Array = Model.instance.groups.filter(groupFilter);
+				assignTree.users = new ArrayCollection(assignmentUsers);
+				assignTree.groups = new ArrayCollection(assignmentGroups);
+				
+				if (selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_GROUP)
+				{	
+					for each (var group:GroupInfo in assignmentGroups)
+					{
+						if (group.name == selectedJob.assignedTo)
+						{
+							assignTree.updateLabel(group);
+							break;
+						}
+					}
+					
+					// check that the assigned to group is a valid group 
+					//	(group still exists)
+					var foundGroup:Boolean = false;
+					var groups:Array = Model.instance.groups;
+					for each (var grp:GroupInfo in groups)
+					{
+						if (grp.name == selectedJob.assignedTo)
+						{
+							foundGroup = true;
+							break;
+						}
+					}
+					if (!foundGroup)
+					{
+						// not a valid assignment
+						assignTree.updateLabel(assignTree.dataProvider[0]);
+						_isValidAssignment = false;
+					}
+				}
+				else if (selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER)
+				{	
+					for each (var user:UserInfo in assignmentUsers)
+					{
+						if (user.userName == selectedJob.assignedTo)
+						{
+							assignTree.updateLabel(user);
+							break;
+						}
+					}
+					
+					// check that the assigned to user is a valid user 
+					//	(user still exists)
+					var foundUser:Boolean = false;
+					var users:Array = Model.instance.users;
+					for each (var usr:UserInfo in users)
+					{
+						if (usr.userName == selectedJob.assignedTo)
+						{
+							foundUser = true;
+							break;
+						}
+					}
+					if (!foundUser)
+					{
+						// not a valid assignment
+						assignTree.updateLabel(assignTree.dataProvider[0]);
+						_isValidAssignment = false;
+					}
+				}
+				else
+				{
+					// set to "Unassigned" by default
+					assignTree.updateLabel(assignTree.dataProvider[0]);
+				}
+			}
+									
+	        private function userFilter(item:UserInfo, index:int, array:Array):Boolean
+	        {
+        		if (Model.instance.privileges.canAssignAnyJob)
+        		{
+        			return true;
+        		}
+        		if (Model.instance.privileges.canAssignGroupJob)
+        		{
+					if (WMUtil.isUserInMyGroups(item.userName, Model.instance.currentUserInfo, Model.instance.groups))
+					{
+						return true;
+					}
+        		}
+        		if (Model.instance.privileges.canAssignIndividualJob)
+        		{
+					if (item.userName == Model.instance.currentUserInfo.userName)
+					{
+						return true;
+					}
+        		}
+				if (Model.instance.selectedJob.assignedTo == item.userName)
+				{
+					return true;
+				}
+				return false;
+	        }
+
+	        private function groupFilter(item:GroupInfo, index:int, array:Array):Boolean
+	        {
+        		if (Model.instance.privileges.canAssignAnyJob)
+        		{
+        			return true;
+        		}
+	        	for each (var group:GroupMembership in Model.instance.currentUserInfo.groups)
+	        	{
+	        		if (item.id == group.id)
+	        		{
+	        			return true;
+	        		}
+	        	}
+	        	return false;
+	        }
+	        
+			private function btnSave_clickHandler():void
+			{
+				if (Model.instance.selectedJob.stage == JobStageEnum.CLOSED)
+				{
+					return;
+				}
+				
+				var params:JobUpdateParameters = new JobUpdateParameters();
+				params.jobId = Model.instance.selectedJob.id;
+				
+				//assignment
+				_isValidAssignment = true;
+				if (_jobAssignable)
+				{
+					params.assignedType = assignTree.selectedAssignedType;
+					params.assignedTo = assignTree.selectedAssignedTo;
+					if (params.assignedType == JobAssignmentTypeEnum.NONE)
+					{
+						_isValidAssignment = false;
+						Alert.show(Model.resource("ErrorAssignmentInput"), Model.resource("ErrorTitle"));
+						return;
+					}
+				}
+				
+				// general job properties
+				if (canChangeOwner)
+				{
+					params.ownedBy = (cboOwnedBy.selectedItem as UserInfo).userName;
+				}
+				if (propertiesEditable)
+				{
+					params.startDate = startDateField.selectedDate;
+					params.clearStartDate = (params.startDate == null);
+					params.dueDate = dueDateField.selectedDate;
+					params.clearDueDate = (params.dueDate == null);
+					params.priority = (cboPriority.selectedItem as JobPriority).value;
+					params.description = txtDescription.text;
+				}
+				if (statusEditable)
+				{
+					params.status = (cboStatus.selectedItem as JobStatus).id;
+				}
+				
+				//data workspace, version, parent version
+				if (canChangeDataWorkspace)
+				{
+					var dataWS:DataWorkspace = DataWorkspace(cboDataWorkspace.selectedItem);
+					if ((dataWS.id == null) || (dataWS.id == ""))
+					{
+						params.dataWorkspaceId = "null";
+					}
+					else
+					{
+						params.dataWorkspaceId = dataWS.id;
+					}
+					/*
+					// do not make any updates to job version until issue with deleting and 
+					// resetting job versions is resolved post 10.1
+					if (_canChangeVersion)
+					{						
+						params.versionName = (cboVersion.selectedLabel == Model.resource("NoVersion")) ? "null" : cboVersion.selectedLabel;
+					}
+					else
+					{
+						params.versionName = (lblVersion.text == Model.resource("NoVersion")) ? "null" : lblVersion.text;
+					}
+					*/
+					if (_canChangeParentVersion)
+					{
+						params.parentVersion = (cboParentVersion.selectedLabel == "") ? "null" : cboParentVersion.selectedLabel;
+					}
+					else
+					{
+						params.parentVersion = (lblParentVersion.text == "") ? "null" : lblParentVersion.text;
+					}
+				}
+				
+				//extend properties
+				var records:Array = [];  // of AuxRecordDescription
+				if (extendedPropertiesEditable && extendedPropertiesBoxes != null)
+				{
+					for (var i:int = 0; i < extendedPropertiesBoxes.length; i++)
+					{
+						var extPropBox:ExtendedPropertiesBox = extendedPropertiesBoxes[i];
+						if (!extPropBox.validateInput())
+						{
+							return;
+						}
+						var recordDesc:AuxRecordDescription = extPropBox.getChanges();
+						if (recordDesc)
+						{
+							records.push(recordDesc);
+						}
+					}
+				}
+				
+				CentralDispatcher.dispatchEvent(new UpdateJobPropertiesEvent(params, records));
+			}
+			
+			private function propertiesDirty():void
+			{
+				CentralDispatcher.dispatchEvent(new PropertiesDirtyEvent(true));
+			}
+
+			/**
+			 * Update the DataWorkspaceDetails versionInfo with JobVersionInfo only if the versionInfo
+			 * doesn't already exist.  This ensures that the newly created version (from a Create Version step)
+			 * will be reflected in the version drop down list for the job. Use this method to update the 
+			 * versionInfo for DataWorkspaceDetails rather than making another server call to retrieve the updated
+			 * DataWorkspace list. 
+			 */
+			private function updateDataWorkspaceDetails(jobVersionInfo:Array /* of JobVersionInfo */):void
+			{
+				// TODO: we need to retrieve the access types from the server?  This
+				//   should not be hardcoded this way.  Doing this as a work around
+				//   for now, but should be fixed in the future.
+				var ESRI_VERSION_PUBLIC_ACCESS:String = "esriVersionAccessPublic";
+				
+				for each (var jobVersion:JobVersionInfo in jobVersionInfo)
+				{
+					for each (var dataWorkspaceDetails:DataWorkspaceDetails in Model.instance.dataWorkspaceDetails)
+					{
+						if (jobVersion.dataWorkspaceId == dataWorkspaceDetails.id)
+						{
+							// match found, make sure the job version is in the version list
+							var matchFound:Boolean = false;
+							var versions:Array = dataWorkspaceDetails.versions;
+							for each (var version:VersionInfo in versions)
+							{
+								if (jobVersion.name == version.name)
+								{
+									matchFound = true;
+									break;
+								}
+							}
+							
+							// if the job version did not exist in the data workspace details
+							// version list, add it
+							if (!matchFound)
+							{
+								var newVersionInfo:VersionInfo = new VersionInfo();
+								newVersionInfo.access = ESRI_VERSION_PUBLIC_ACCESS;
+								newVersionInfo.name = jobVersion.name;
+								newVersionInfo.parent = jobVersion.parent;
+								dataWorkspaceDetails.versions.push(newVersionInfo);
+							}
+						}
+					}
+				}
+			}
+			
+			private function updateVersions():void
+			{
+				var defaultVersion:String;
+				var version:VersionInfo;
+				var dataWorkspace:DataWorkspace = DataWorkspace(cboDataWorkspace.selectedItem);
+				if (dataWorkspace == null || dataWorkspace.id == null || dataWorkspace.id == "") // no data workspace
+				{
+					_canChangeVersion = false;
+					_canChangeParentVersion = false;
+					_showDataWorkspaceVersionsError = false;
+					lblVersion.text = Model.resource("NoVersion");
+					lblParentVersion.text = "";
+				}
+				else // process data workspace 
+				{
+					// disallow updates to version for now (disable version combo box) 
+					// until the issue with clearing versions can be resolved post 10.1
+					//_canChangeVersion = true;
+					_canChangeVersion = false;
+					
+					_canChangeParentVersion = true;
+
+					var selectedParentVersion:VersionInfo = null;
+					for each (var dataWorkspaceDetails:DataWorkspaceDetails in Model.instance.dataWorkspaceDetails)
+					{
+						if (dataWorkspaceDetails.id == dataWorkspace.id)
+						{
+							//update parent version
+							defaultVersion = dataWorkspaceDetails.defaultVersion;
+							_jobParentVersions = null;
+							var jobParentVersions:Array = [];
+							for each (version in dataWorkspaceDetails.versions)
+							{
+								if (version.name != Model.resource("NoVersion"))
+								{
+									jobParentVersions.push(version);									
+									
+									if ((dataWorkspace.id == Model.instance.selectedJob.dataWorkspaceId) 
+										&& (Model.instance.selectedJob.parentVersion != null 
+											|| Model.instance.selectedJob.parentVersion != ""))
+									{
+										if ((version.name == Model.instance.selectedJob.parentVersion) ||
+											// for case sensitve databases, sometimes the match fails for 
+											// sde default (sde.DEFAULT vs. SDE.DEFAULT), check for this special case
+											(version.name.toUpperCase() == SDE_DEFAULT 
+												&& Model.instance.selectedJob.parentVersion.toUpperCase() == SDE_DEFAULT))
+										{
+											selectedParentVersion = version;
+										}
+									}
+									else
+									{
+										if ((version.name == dataWorkspaceDetails.defaultVersion) ||
+											// for case sensitve databases, sometimes the match fails for 
+											// sde default (sde.DEFAULT vs. SDE.DEFAULT), check for this special case
+											(version.name.toUpperCase() == SDE_DEFAULT
+												&& dataWorkspaceDetails.defaultVersion.toUpperCase() == SDE_DEFAULT))
+										{
+											selectedParentVersion = version;
+										}
+									}
+								}
+							}
+							
+							// update parent versions
+							_jobParentVersions = new ArrayCollection(jobParentVersions);
+							if (selectedParentVersion)
+							{
+								// update selected parent version if a match was found
+								cboParentVersion.selectedItem = selectedParentVersion;
+							}
+							
+							//update version
+							_jobVersions = null;
+							var jobVersions:Array = dataWorkspaceDetails.versions;					
+							
+							// remove the NoVersion options if the job already has a version 
+							if (Model.instance.selectedJob.versionExists == true
+								&& jobVersions && jobVersions.length > 0
+								&& jobVersions[0].name == Model.resource("NoVersion"))
+							{
+								jobVersions.shift();
+							}
+							// add the NoVersion option if the job version doesn't exist
+							else if ((Model.instance.selectedJob.versionExists == false)
+								&& ((jobVersions.length ==0) || (jobVersions[0].name != Model.resource("NoVersion"))))
+							{
+								// always add the NoVersion option at the top of the list
+								var emptyVersion:VersionInfo = new VersionInfo();
+								emptyVersion.name = Model.resource("NoVersion");
+								jobVersions.unshift(emptyVersion);						
+							}
+							_jobVersions = new ArrayCollection(jobVersions);
+							
+							if ((Model.instance.selectedJob.versionExists) 
+								&& (dataWorkspaceDetails.id == Model.instance.selectedJob.dataWorkspaceId))
+							{
+								for each (version in dataWorkspaceDetails.versions)
+								{
+									if ((version.name == Model.instance.selectedJob.versionName) ||
+										// for case sensitve databases, sometimes the match fails for 
+										// sde default (sde.DEFAULT vs. SDE.DEFAULT), check for this special case
+										(version.name.toUpperCase() == SDE_DEFAULT
+											&& Model.instance.selectedJob.versionName.toUpperCase() == SDE_DEFAULT))
+									{
+										cboVersion.selectedItem = version;
+									}
+								}
+							}
+							else
+							{
+								cboVersion.selectedIndex = 0;
+							}
+							
+							if ((cboVersion.selectedLabel == dataWorkspaceDetails.defaultVersion) ||
+								// for case sensitve databases, sometimes the match fails for 
+								// sde default (sde.DEFAULT vs. SDE.DEFAULT), check for this special case
+								(cboVersion.selectedLabel.toUpperCase() == SDE_DEFAULT
+									&& dataWorkspaceDetails.defaultVersion.toUpperCase() == SDE_DEFAULT))
+							{
+								_canChangeParentVersion = false;
+							}
+							break;
+						}
+					}
+					
+					var selectedVersion:VersionInfo = VersionInfo(cboVersion.selectedItem);
+					var selectedVersionName:String = (selectedVersion != null) ? selectedVersion.name : null;
+					if (defaultVersion == selectedVersionName)
+					{
+						lblVersion.text = defaultVersion;	// need version text while version combo box is disabled
+						lblParentVersion.text = "";
+						_canChangeParentVersion = false;
+					}
+					else if (Model.resource("NoVersion") == selectedVersionName)
+					{
+						lblVersion.text = Model.resource("NoVersion");	// need version text while version combo box is disabled
+						_canChangeParentVersion = true;
+					}
+					else
+					{
+						lblVersion.text = selectedVersionName;	// need version text while version combo box is disabled
+						lblParentVersion.text = defaultVersion;
+						_canChangeParentVersion = false;
+					}
+
+					// _jobParentVersions should have been populated, otherwise there was an error
+					// retrieving version info for the data workspace. show an error and do not allow
+					// the parent version or version to be changed
+					_showDataWorkspaceVersionsError =
+						(_jobParentVersions == null || _jobParentVersions.length == 0) ? true : false;
+					if (_showDataWorkspaceVersionsError)
+					{
+						_canChangeVersion = false;
+						_canChangeParentVersion = false;
+					}
+				}
+			}
+
+			private function dataWorkspaceChanged():void
+			{				
+				updateVersions();				
+				propertiesDirty();
+			}
+			
+			private function versionChanged():void
+			{
+				//empty parent version if version is changed to default version
+				var dataWorkspace:DataWorkspace = DataWorkspace(cboDataWorkspace.selectedItem);
+				var defaultVersion:String;
+				for each (var dataWorkspaceDetails:DataWorkspaceDetails in Model.instance.dataWorkspaceDetails)
+				{
+					if (dataWorkspaceDetails.id == dataWorkspace.id)
+					{
+						defaultVersion = dataWorkspaceDetails.defaultVersion;
+						break;
+					}
+				}
+				
+				var version:VersionInfo = VersionInfo(cboVersion.selectedItem);
+				if ((version.name == defaultVersion) ||
+					// for case sensitve databases, sometimes the match fails for 
+					// sde default (sde.DEFAULT vs. SDE.DEFAULT), check for this special case
+					(version.name.toUpperCase() == SDE_DEFAULT
+						&& defaultVersion.toUpperCase() == SDE_DEFAULT))
+				{
+					lblParentVersion.text = "";
+					_canChangeParentVersion = false;
+				}
+				else if (version.name == Model.resource("NoVersion"))
+				{
+					_canChangeParentVersion = true;
+				}
+				else
+				{
+					lblParentVersion.text = defaultVersion;
+					_canChangeParentVersion = false;
+				}
+			
+				propertiesDirty();
+			}
+			
+			private function startDateChanged():void
+			{
+				if (startDateField.selectedDate != null)
+				{
+					dueDateField.selectableRange = {rangeStart:startDateField.selectedDate};
+					if (dueDateField.selectedDate != null && 
+						startDateField.selectedDate > dueDateField.selectedDate)
+					{
+						// check that due date field is not earlier than start date
+						dueDateField.selectedDate = startDateField.selectedDate;
+					}
+				}
+				else
+				{
+					dueDateField.selectableRange = null;
+				}
+				propertiesDirty();
+			}
+			
+			private function formatDate(date:Date):String 
+			{
+				return dateFormatter.format(date);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:DateFormatter id="dateFormatter" 
+						  formatString="{Model.instance.configModel.jobPropertiesDateFormat}"/>
+		
+		<fx:Boolean id="canChangeOwner">{
+			Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canChangeJobOwner
+		}</fx:Boolean>
+		
+		<fx:Boolean id="canChangeDataWorkspace">{
+			Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canManageDataWorkspace
+			&amp;&amp; (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.UNASSIGNED
+				|| Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName  
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+			)
+		}</fx:Boolean>
+		
+		<fx:Boolean id="propertiesEditable">{
+			Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canUpdateProperties 
+			&amp;&amp; (!Model.instance.isSelectedJobOnHold 
+				|| Model.instance.privileges.canUpdatePropertiesForHeldJobs)
+			&amp;&amp; (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.UNASSIGNED
+				|| Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName  
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+			)
+		}</fx:Boolean>
+		
+		<fx:Boolean id="statusEditable">{
+			!Model.instance.autoStatusAssign 
+			&amp;&amp; propertiesEditable
+		}</fx:Boolean>
+		
+		<fx:Boolean id="extendedPropertiesEditable">{
+			Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canManageExtendedProperties
+			&amp;&amp; (!Model.instance.isSelectedJobOnHold 
+				|| Model.instance.privileges.canUpdatePropertiesForHeldJobs)
+			&amp;&amp; (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.UNASSIGNED
+				|| Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName  
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+			)
+		}</fx:Boolean>
+		
+	</fx:Declarations>
+	
+	<supportClasses:controlBarContent>
+		<mx:HBox verticalAlign="middle" horizontalGap="1" paddingLeft="10"
+				 visible="{Model.instance.isPropertiesDirty}"
+				 includeInLayout="{Model.instance.isPropertiesDirty}">					
+			<mx:Label text="|"/>
+			<mx:LinkButton id="btnSave" styleName="saveChangesLinkButton" 
+						   label="@Resource(bundle='WMResources',key='SaveChanges')" 
+						   click="btnSave_clickHandler()"/>
+		</mx:HBox>
+	</supportClasses:controlBarContent>
+	
+	<mx:VBox width="100%" height="100%"
+			 includeInLayout="{Model.instance.selectedJob == null}" 
+			 visible="{Model.instance.selectedJob == null}"
+			 />
+	<mx:VBox width="100%" height="100%"
+			 includeInLayout="{Model.instance.selectedJob != null}" 
+			 visible="{Model.instance.selectedJob != null}"
+			 >
+		<mx:VBox paddingBottom="10" paddingLeft="10" paddingRight="10">
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold"
+						  text="@Resource(bundle='WMResources',key='JobID')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label text="{Model.instance.selectedJob.id}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='JobType')"
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label id="lblJobType"/>						
+			</mx:HBox>
+			<mx:HBox visible="{_showDataWorkspaceVersionsError}" includeInLayout="{_showDataWorkspaceVersionsError}" verticalAlign="middle">
+				<mx:Label text="" width="101"/>
+				<mx:Label text="@Resource(bundle='WMResources',key='DataWorkspaceVersionsUnavailable')" 
+						  width="300" textAlign="left" color="red"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='DataWorkspace')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label id="lblDataWorkspace" 
+						  visible="{!canChangeDataWorkspace}" includeInLayout="{!canChangeDataWorkspace}"/>
+				<mx:ComboBox id="cboDataWorkspace" labelField="name" width="200"
+							 dataProvider="{Model.instance.serviceInfo.dataWorkspaces}"
+							 visible="{canChangeDataWorkspace}" includeInLayout="{canChangeDataWorkspace}"
+							 change="dataWorkspaceChanged()"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='Version')" 
+						  width="101"
+						  textAlign="right"/>
+				<mx:Label id="lblVersion" 
+						  text="{Model.instance.selectedJob.versionExists ? Model.instance.selectedJob.versionName : Model.resource('NoVersion')}"
+						  visible="{!_canChangeVersion}" includeInLayout="{!_canChangeVersion}" />
+				<mx:ComboBox id="cboVersion" labelField="name" width="160"
+							 dataProvider="{_jobVersions}"
+							 change="versionChanged()"
+							 visible="{_canChangeVersion}" includeInLayout="{_canChangeVersion}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='ParentVersion')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label id="lblParentVersion" text="{Model.instance.selectedJob.parentVersion}"
+						  visible="{!_canChangeParentVersion}"  includeInLayout="{!_canChangeParentVersion}"/>	
+				<mx:ComboBox id="cboParentVersion" labelField="name" width="160"
+							 dataProvider="{_jobParentVersions}"
+							 change="propertiesDirty()"
+						  	 visible="{_canChangeParentVersion}" includeInLayout="{_canChangeParentVersion}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+					fontWeight="bold" 
+					text="@Resource(bundle='WMResources',key='Status')" 
+					width="101" 
+					textAlign="right"/>
+				<mx:Label id="lblStatus" 
+						  visible="{!statusEditable}" includeInLayout="{!statusEditable}"/>
+				<mx:ComboBox id="cboStatus" labelField="caption"
+					dataProvider="{Model.instance.serviceInfo.jobStatuses}" 
+					change="propertiesDirty()"
+					visible="{statusEditable}" includeInLayout="{statusEditable}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='PctComplete')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label text="{resourceManager.getString(Model.RESOURCE_BUNDLE,'Percentage',[Model.instance.selectedJob.percentageComplete])}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='AOI')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label text="@Resource(bundle='WMResources',key='AOIDefined')" 
+						  visible="{Model.instance.selectedJob.aoi != null}"
+						  includeInLayout="{Model.instance.selectedJob.aoi != null}"/>
+				<mx:Label text="@Resource(bundle='WMResources',key='AOINotDefined')"  color="red" 
+						  visible="{Model.instance.selectedJob.aoi == null}"
+						  includeInLayout="{Model.instance.selectedJob.aoi == null}"/>
+			</mx:HBox>
+			<mx:HBox verticalAlign="middle">
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='OwnedBy')" 
+						  width="101"
+						  textAlign="right"/>
+				<mx:Label id="lblOwnedBy" 
+						  visible="{!canChangeOwner}" includeInLayout="{!canChangeOwner}"/>
+				<mx:ComboBox id="cboOwnedBy" 
+							 dataProvider="{Model.instance.users}"
+							 change="propertiesDirty()"
+							 visible="{canChangeOwner}" includeInLayout="{canChangeOwner}"/>
+			</mx:HBox>				
+			<mx:HBox visible="{_jobAssignable}" includeInLayout="{_jobAssignable}">
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='AssignedTo')" 
+						  width="101" 
+						  textAlign="right"/>
+				<components:JobAssignmentComboBox id="assignTree" width="200" treeHeight="200"
+												  unassignedLabel="@Resource(bundle='WMResources',key='Unassigned')"
+												  userFolderLabel="@Resource(bundle='WMResources',key='User')"
+												  groupFolderLabel="@Resource(bundle='WMResources',key='Group')"
+												  enabled="{_jobAssignable}"
+												  treeItemChange="propertiesDirty()"
+												  />
+				<mx:Label text="@Resource(bundle='WMResources',key='InvalidAssignment')" 
+						  color="red"
+						  visible="{!_isValidAssignment}" 
+						  includeInLayout="{!_isValidAssignment}" />
+			</mx:HBox>
+			<mx:HBox visible="{!_jobAssignable}" includeInLayout="{!_jobAssignable}" verticalAlign="middle">
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='AssignedTo')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label id="lblAssignedTo"/>
+			</mx:HBox>
+			<mx:HBox verticalAlign="middle">
+				<mx:Label color="#043458" 
+						  fontWeight="bold"
+						  text="@Resource(bundle='WMResources',key='StartDate')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label id="startDateLabel" text="{dateFormatter.format(Model.instance.selectedJob.startDate)}" 
+						  visible="{!propertiesEditable}" includeInLayout="{!propertiesEditable}"/>
+				<mx:DateField id="startDateField"
+							  showToday="true"
+							  selectedDate="{Model.instance.selectedJob.startDate}"
+							  labelFunction="formatDate" parseFunction="null" width="160"
+							  visible="{propertiesEditable}" includeInLayout="{propertiesEditable}"
+							  change="startDateChanged()" />
+				<mx:LinkButton styleName="clearDateLinkButton" 
+							   label="@Resource(bundle='WMResources',key='Clear')" 
+							   visible="{propertiesEditable &amp;&amp; startDateField.selectedDate != null}" 
+							   includeInLayout="{propertiesEditable &amp;&amp; startDateField.selectedDate != null}" 
+							   click="{startDateField.selectedDate = null; propertiesDirty();}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label color="#043458" 
+						  fontWeight="bold"
+						  text="@Resource(bundle='WMResources',key='DueDate')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label text="{dateFormatter.format(Model.instance.selectedJob.dueDate)}" 
+						  visible="{!propertiesEditable}" includeInLayout="{!propertiesEditable}"/>
+				<mx:DateField id="dueDateField" 
+							  showToday="true" 
+							  selectedDate="{Model.instance.selectedJob.dueDate}"
+							  selectableRange="{
+								  startDateField.selectedDate != null 
+								  ? {rangeStart:startDateField.selectedDate}
+								  : null}"
+							  labelFunction="formatDate" parseFunction="null" width="160"
+							  change="propertiesDirty()"
+							  visible="{propertiesEditable}" includeInLayout="{propertiesEditable}"/>
+				<mx:LinkButton styleName="clearDateLinkButton" 
+							   label="@Resource(bundle='WMResources',key='Clear')" 
+							   visible="{propertiesEditable &amp;&amp; dueDateField.selectedDate != null}" 
+							   includeInLayout="{propertiesEditable &amp;&amp; dueDateField.selectedDate != null}" 
+							   click="{dueDateField.selectedDate = null; propertiesDirty();}" />
+			</mx:HBox>
+			<mx:HBox verticalAlign="middle">
+				<mx:Label color="#043458" 
+						  fontWeight="bold" 
+						  text="@Resource(bundle='WMResources',key='Priority')" 
+						  width="101" 
+						  textAlign="right"/>
+				<mx:Label id="lblPriority"
+						  visible="{!propertiesEditable}" includeInLayout="{!propertiesEditable}"/>
+				<mx:ComboBox id="cboPriority" labelField="name"
+							 dataProvider="{Model.instance.serviceInfo.jobPriorities}"
+							 change="propertiesDirty()"
+							 visible="{propertiesEditable}" includeInLayout="{propertiesEditable}"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:VBox verticalGap="0">
+					<mx:Label color="#043458" 
+							  fontWeight="bold" 
+							  text="@Resource(bundle='WMResources',key='Description')" 
+							  width="101" 
+							  textAlign="right"/>
+					<mx:Label color="#043458" 
+							  text="@Resource(bundle='WMResources',key='MaxDescriptionLength')" 
+							  fontStyle="italic"
+							  width="101" 
+							  textAlign="right"
+							  visible="{propertiesEditable}" includeInLayout="{propertiesEditable}"/>
+				</mx:VBox>
+				<mx:Text text="{Model.instance.selectedJob.description}" 
+						 maxWidth="300" maxHeight="100"
+						 visible="{!propertiesEditable}" includeInLayout="{!propertiesEditable}"/>
+				<mx:TextArea id="txtDescription" 
+							 text="{Model.instance.selectedJob.description}" 
+							 width="300" height="100"
+							 maxChars="500"
+							 change="propertiesDirty()"
+							 visible="{propertiesEditable}" includeInLayout="{propertiesEditable}"/>
+			</mx:HBox>
+		</mx:VBox>
+		<mx:VBox width="100%" paddingBottom="10" paddingLeft="10" paddingRight="10">
+			<mx:Repeater id="extendedPropertiesRepeater" dataProvider="{Model.instance.selectedJobExtendedProperties}">
+				<mx:HRule strokeWidth="1" strokeColor="#043458" width="100%"/>
+				<view:ExtendedPropertiesBox id="extendedPropertiesBoxes" 
+					width="100%"
+					recordContainer="{extendedPropertiesRepeater.currentItem}" 
+					editable="{extendedPropertiesEditable}"
+					/>
+				<mx:Spacer height="5"/>
+			</mx:Repeater>
+		</mx:VBox>
+	</mx:VBox>		
+</supportClasses:BaseJobView>

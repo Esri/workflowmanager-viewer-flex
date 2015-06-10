@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 styleName="popUpBox"
+		 minWidth="280"
+		 horizontalScrollPolicy="off"
+		 verticalScrollPolicy="off"
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.viewer.events.LoginEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			private function btnLogin_clickHandler():void
+			{
+				var username:String = txtUsername.text;
+				var password:String = txtPassword.text;
+				if (username != '')
+				{
+		        	CentralDispatcher.dispatchEvent(new LoginEvent(username, password));
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<mx:Canvas width="100%">
+		<mx:Label text="@Resource(bundle='WMResources',key='LogInToWorkflowManager')" 
+				  fontWeight="bold" 
+				  color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox backgroundColor="#93afbe" 
+			 backgroundAlpha="1" 
+			 paddingTop="10" 
+			 paddingBottom="10" 
+			 paddingLeft="10"
+			 paddingRight="10">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label color="#043458" 
+					  text="@Resource(bundle='WMResources',key='Username')" 
+					  minWidth="70"
+					  textAlign="right"/>
+			<mx:TextInput id="txtUsername" 
+						  text="{Model.instance.configModel.initialUsername}" 
+						  width="100%"
+						  enter="btnLogin_clickHandler()"/>
+		</mx:HBox>
+		<mx:HBox verticalAlign="middle"
+				 visible="{Model.instance.configModel.tokenAuthenticationEnabled}"
+				 includeInLayout="{Model.instance.configModel.tokenAuthenticationEnabled}">
+			<mx:Label color="#043458" 
+					  text="@Resource(bundle='WMResources',key='Password')" 
+					  width="70" 
+					  textAlign="right"/>
+			<mx:TextInput id="txtPassword" 
+						  displayAsPassword="true" 
+						  width="100%"
+						  enter="btnLogin_clickHandler()"/>
+		</mx:HBox>
+		<mx:Spacer height="5"/>
+		<mx:HBox width="100%" 
+				 verticalAlign="middle">
+			<mx:Text id="lblError" 
+					 width="168" 
+					 color="#990000" 
+					 text="{Model.instance.loginError}"/>
+			<mx:Button id="btnLogin" 
+					   label="@Resource(bundle='WMResources',key='LogIn')" 
+					   enabled="{txtUsername.text != '' &amp;&amp; Model.instance.loginEnabled}" 
+					   click="btnLogin_clickHandler()" />
+		</mx:HBox>
+	</mx:VBox>
+</mx:VBox>

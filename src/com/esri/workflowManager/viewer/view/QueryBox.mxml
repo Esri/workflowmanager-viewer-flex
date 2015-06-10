@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 verticalGap="0" 
+		 width="100%" 
+		 height="100%" 
+		 minWidth="0" 
+		 minHeight="0"
+		 paddingTop="5" 
+		 paddingLeft="5" 
+		 paddingBottom="5" 
+		 paddingRight="5"
+		 creationComplete="creationCompleteHandler()">
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.JobQuery;
+			import com.esri.workflowManager.tasks.supportClasses.JobQueryContainer;
+			import com.esri.workflowManager.viewer.events.JobQueryEvent;
+			import com.esri.workflowManager.viewer.model.JobSearch;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.events.ListEvent;
+			
+			private function creationCompleteHandler():void
+			{
+				CentralDispatcher.addEventListener("publicQueriesAvailable", publicQueriesAvailableHandler);
+			}
+			
+			private function publicQueriesAvailableHandler(event:Event):void
+			{
+				// Allow time for data binding and event processing
+				callLater(expandQueries);
+				
+				function expandQueries():void
+				{
+					queryTree.validateNow();
+					queryTree.expandChildrenOf(Model.instance.queryList[0], true);
+					
+					// Find the first job query by traversing down the container hierarchy
+					var firstQuery:JobQuery = findFirstQuery(Model.instance.queryList[0] as JobQueryContainer);
+					if (firstQuery)
+					{
+						queryTree.selectedItem = firstQuery;
+						CentralDispatcher.dispatchEvent(new JobQueryEvent(firstQuery.label, JobSearch.fromQueryId(firstQuery.id)));
+					}
+				}
+			}
+			
+			private function findFirstQuery(container:JobQueryContainer):JobQuery
+			{
+				if (container)
+				{
+					for each (var child:Object in container.children)
+					{
+						if (child is JobQueryContainer)
+						{
+							var q:JobQuery = findFirstQuery(JobQueryContainer(child));
+							if (q)
+							{
+								return q;
+							}
+						}
+						else if (child is JobQuery)
+						{
+							return JobQuery(child);
+						}
+					}
+				}
+				return null;
+			}
+			
+			private function queryTree_itemClickHandler(event:ListEvent):void
+			{
+				var item:Object = event.itemRenderer.data;
+				if (queryTree.dataDescriptor.isBranch(item))
+				{
+					queryTree.expandItem(item, !queryTree.isItemOpen(item), true);
+					queryTree.selectedIndex = -1;
+				}
+				else
+				{
+					if (item is JobQuery)
+					{
+						var query:JobQuery = item as JobQuery;
+						CentralDispatcher.dispatchEvent(new JobQueryEvent(query.label, JobSearch.fromQueryId(query.id)));
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<mx:Tree id="queryTree" 
+			 width="100%" 
+			 height="100%" 
+			 backgroundAlpha="0"
+			 dataProvider="{Model.instance.queryList}" 
+			 itemClick="queryTree_itemClickHandler(event)"/>
+</mx:VBox>

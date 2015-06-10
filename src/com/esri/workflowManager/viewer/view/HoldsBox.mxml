@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*" xmlns:s="library://ns.adobe.com/flex/spark"
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.HoldType;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.tasks.supportClasses.UserInfo;
+			import com.esri.workflowManager.viewer.events.AddHoldEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.collections.ArrayCollection;
+			import mx.collections.IList;
+			import mx.controls.dataGridClasses.DataGridColumn;
+			
+			private function getDateLabel(item:Object, column:DataGridColumn):String
+			{
+				return dateFormatter.format(item[column.dataField]);
+			}
+
+			private function getUserLabel(item:Object, column:DataGridColumn):String
+			{
+				for each (var user:UserInfo in Model.instance.users)
+				{
+					if (user.userName == item[column.dataField])
+					{
+						return user.fullName;
+					}
+				}
+				// Return the raw username
+				return item[column.dataField];
+			}
+			
+			private function getHoldTypeLabel(item:Object, column:DataGridColumn):String
+			{
+				for each (var hold:HoldType in Model.instance.serviceInfo.holdTypes)
+				{
+					if (hold.id == item[column.dataField])
+					{
+						return hold.name;
+					}
+				}
+				// Return the raw hold type
+				return item[column.dataField];
+			}
+						
+			private function getActiveLabel(item:Object, column:DataGridColumn):String
+			{
+				if (item[column.dataField] != null)
+				{
+					return Model.resource("Yes");					
+				}
+				else
+				{
+					return Model.resource("No");
+				}
+			}
+			
+			private function btnAddHold_clickHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new AddHoldEvent(Model.instance.selectedJob.id, (cboHoldType.selectedItem as HoldType).id, txtComments.text));
+				txtComments.text = "";
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:DateFormatter id="dateFormatter" 
+						  formatString="{Model.instance.configModel.jobHoldDateFormat}"/>
+		
+		<fx:Boolean id="editable">{
+			Model.instance.selectedJob != null
+			&amp;&amp; (Model.instance.selectedJob.stage != JobStageEnum.CLOSED) 
+			&amp;&amp; (Model.instance.privileges.canManageHolds) 
+			&amp;&amp; (Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName  
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName 
+				)
+			)			
+		}</fx:Boolean>
+		
+		<fx:Boolean id="selectedJobNotNull">{
+			Model.instance.selectedJob != null 
+		}</fx:Boolean>
+	</fx:Declarations>
+
+	<mx:HBox verticalAlign="middle" visible="{editable}" includeInLayout="{editable}">
+		<mx:Label text="@Resource(bundle='WMResources',key='AddHold')"/>
+		<mx:TextInput id="txtComments" width="200"
+					  enter="btnAddHold_clickHandler()"/>
+		<mx:ComboBox id="cboHoldType" width="200" labelField="name"
+					 dataProvider="{Model.instance.serviceInfo.holdTypes}" />
+		<mx:Button id="btnAddHold" label="@Resource(bundle='WMResources',key='Add')"
+				   click="btnAddHold_clickHandler()" />
+	</mx:HBox>
+	<mx:HBox width="100%" height="100%" paddingRight="10" visible="{selectedJobNotNull}">
+		<mx:DataGrid width="100%" height="100%" 
+					 selectable="false"
+					 dataProvider="{Model.instance.selectedJobHolds}">
+			<mx:columns>
+				<mx:DataGridColumn dataField="id" 
+								   minWidth="50" 
+								   headerText="@Resource(bundle='WMResources',key='ID')" />
+				<mx:DataGridColumn dataField="type" 
+								   minWidth="80"
+								   headerText="@Resource(bundle='WMResources',key='Type')" 
+								   labelFunction="getHoldTypeLabel" />
+				<mx:DataGridColumn dataField="holdComments" 
+								   minWidth="200"
+								   headerText="@Resource(bundle='WMResources',key='Comment')" />
+				<mx:DataGridColumn dataField="releaseDate"
+								   minWidth="50"
+								   headerText="@Resource(bundle='WMResources',key='Active')"
+								   labelFunction="getActiveLabel"/>
+				<mx:DataGridColumn dataField="holdDate" 
+								   minWidth="60" 
+								   headerText="@Resource(bundle='WMResources',key='HoldDate')" 
+								   labelFunction="getDateLabel"/>
+				<mx:DataGridColumn dataField="releasedBy" 
+								   minWidth="60" 
+								   headerText="@Resource(bundle='WMResources',key='ReleasedBy')" 
+								   labelFunction="getUserLabel"/>
+			</mx:columns>
+		</mx:DataGrid>
+	</mx:HBox>
+</supportClasses:BaseJobView>

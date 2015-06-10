@@ -1,0 +1,543 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:components="com.esri.workflowManager.components.*"
+		 styleName="popUpBox"
+		 creationComplete="creationCompleteHandler()"
+		 keyDown="keyDownHandler(event)" xmlns:s="library://ns.adobe.com/flex/spark" 
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.DataWorkspace;
+			import com.esri.workflowManager.tasks.supportClasses.DataWorkspaceDetails;
+			import com.esri.workflowManager.tasks.supportClasses.GroupInfo;
+			import com.esri.workflowManager.tasks.supportClasses.GroupMembership;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobCreationParameters;
+			import com.esri.workflowManager.tasks.supportClasses.JobPriority;
+			import com.esri.workflowManager.tasks.supportClasses.JobType;
+			import com.esri.workflowManager.tasks.supportClasses.JobTypeDetails;
+			import com.esri.workflowManager.tasks.supportClasses.JobTypeStateEnum;
+			import com.esri.workflowManager.tasks.supportClasses.UserInfo;
+			import com.esri.workflowManager.tasks.supportClasses.VersionInfo;
+			import com.esri.workflowManager.viewer.events.CreateJobEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.utils.WMUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.managers.PopUpManager;
+			import mx.rpc.AsyncResponder;
+			
+			[Bindable] private var _isValidAssignment:Boolean = true;
+			[Bindable] private var _jobAssignable:Boolean = false;
+			[Bindable] private var _selectedJobTypeDetail:JobTypeDetails;
+			[Bindable] private var _canDataWorkspaceChange:Boolean = false;
+			[Bindable] private var _showDataWorkspaceVersionsError:Boolean = false;
+			[Bindable] private var _canChangeParentVersion:Boolean = false;
+			[Bindable] private var _jobParentVersions:ArrayCollection;
+			
+			private static var SYS_CURRENT_LOGIN:String = "[SYS:CUR_LOGIN]";
+			
+			private function creationCompleteHandler():void
+			{
+				cboJobType.dataProvider = Model.instance.serviceInfo.jobTypes.filter(
+					function (item:JobType, index:int, array:Array):Boolean
+					{
+						return (item.state == JobTypeStateEnum.ACTIVE);
+					}
+				);
+				
+				if (Model.instance.privileges.canChangeJobOwner)
+				{
+					cboOwnedBy.dataProvider = Model.instance.users;
+					// Select the current user in the dropdown list
+					for each (var userInfo:UserInfo in Model.instance.users)
+					{
+						if (userInfo.userName == Model.instance.currentUserInfo.userName)
+						{
+							cboOwnedBy.selectedItem = userInfo;
+							break;
+						}
+					}
+				}
+				
+				_jobAssignable = Model.instance.privileges.canAssignAnyJob 
+					|| Model.instance.privileges.canAssignGroupJob 
+					|| Model.instance.privileges.canAssignIndividualJob;
+				
+				setJobTypeDefaults();
+				
+				cboJobType.setFocus();
+			}
+			
+			private function setJobTypeDefaults():void
+			{
+				var selectedJobType:JobType = cboJobType.selectedItem as JobType;
+				if (selectedJobType == null)
+				{
+					return;
+				}
+				Model.instance.configTask.getJobTypeDetails(selectedJobType.id, 
+					new AsyncResponder(onJobTypeResult, onJobTypeFault));
+				
+				function onJobTypeResult(jobTypeDetail:JobTypeDetails, token:Object=null):void
+				{
+					_selectedJobTypeDetail = jobTypeDetail;
+					
+					var assignmentUsers:Array = Model.instance.users.filter(userFilter);
+					var assignmentGroups:Array = Model.instance.groups.filter(groupFilter);
+					assignTree.users = new ArrayCollection(assignmentUsers);
+					assignTree.groups = new ArrayCollection(assignmentGroups);
+					
+					// set job assignment
+					if (jobTypeDetail.defaultAssignedType == JobAssignmentTypeEnum.ASSIGNED_TO_GROUP)
+					{
+						for each (var group:GroupInfo in assignmentGroups)
+						{
+							if (group.name == jobTypeDetail.defaultAssignedTo)
+							{
+								assignTree.updateLabel(group);
+								lblAssignedTo.text = group.name;
+								break;
+							}
+						}
+					}
+					else if (jobTypeDetail.defaultAssignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER)
+					{
+						var defaultAssignedTo:String = jobTypeDetail.defaultAssignedTo;
+						if (defaultAssignedTo == SYS_CURRENT_LOGIN)
+						{
+							defaultAssignedTo = Model.instance.currentUserInfo.userName;
+						}
+						for each (var user:UserInfo in assignmentUsers)
+						{
+							if (user.userName == defaultAssignedTo)
+							{
+								assignTree.updateLabel(user);
+								lblAssignedTo.text = user.userName;
+								break;
+							}
+						}
+					}
+					else
+					{
+						// unassigned
+						assignTree.updateLabel(assignTree.dataProvider[0]);
+						lblAssignedTo.text = Model.resource("Unassigned");
+					}
+					
+					// set start and due dates
+					var defaultStartDate:Date = _selectedJobTypeDetail.defaultStartDate;
+					var defaultDueDate:Date = _selectedJobTypeDetail.defaultDueDate;
+					var defaultJobDuration:Number = _selectedJobTypeDetail.defaultJobDuration;
+					if (defaultStartDate)
+					{
+						startDateField.selectedDate = defaultStartDate;
+					}
+					if (defaultDueDate) 
+					{
+						dueDateField.selectedDate = defaultDueDate;
+					}
+					if (defaultJobDuration > 0)
+					{
+						var dueDate:Date = (defaultStartDate) ? defaultStartDate : new Date();
+						dueDate["date"] += defaultJobDuration;
+						dueDateField.selectedDate = dueDate;
+					}
+					
+					//set priority
+					for each (var priority:JobPriority in Model.instance.serviceInfo.jobPriorities)
+					{
+						if (priority.value == jobTypeDetail.defaultPriority)
+						{
+							cboPriority.selectedItem = priority;
+							break;
+						}
+					}
+					
+					//add empty data workspace
+					if ((Model.instance.serviceInfo.dataWorkspaces.length == 0) 
+						|| (Model.instance.serviceInfo.dataWorkspaces[0].name != Model.resource("NoDataWorkspace")))
+					{
+						var emptyWorkspace:DataWorkspace = new DataWorkspace();
+						emptyWorkspace.name = Model.resource("NoDataWorkspace");
+						Model.instance.serviceInfo.dataWorkspaces.unshift(emptyWorkspace);						
+					}	
+					
+					//set data workspace and parent version
+					if ((jobTypeDetail.defaultDataWorkspaceId == null) || (jobTypeDetail.defaultDataWorkspaceId == ""))
+					{						
+						cboDataWorkspace.selectedIndex = 0;
+					}
+					else
+					{
+						for each (var dataWorkspace:DataWorkspace in Model.instance.serviceInfo.dataWorkspaces)
+						{
+							if (dataWorkspace.id == jobTypeDetail.defaultDataWorkspaceId)
+							{						
+								cboDataWorkspace.selectedItem = dataWorkspace;							
+								break;
+							}					
+						}
+					}
+					
+					_canDataWorkspaceChange = jobTypeDetail.canDataWorkspaceChange;
+				}
+				function onJobTypeFault(data:Object, token:Object=null):void
+				{
+					Alert.show(Model.resource("ErrorLoadingJobTypeDetails") + "\n\n" + data.toString(), Model.resource("ErrorTitle"));
+				}
+			}
+
+	        private function userFilter(item:UserInfo, index:int, array:Array):Boolean
+	        {
+        		if (Model.instance.privileges.canAssignAnyJob)
+        		{
+        			return true;
+        		}
+				if (_selectedJobTypeDetail.defaultAssignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&& _selectedJobTypeDetail.defaultAssignedTo == item.userName)
+				{
+					return true;
+				}
+        		if (Model.instance.privileges.canAssignGroupJob)
+        		{
+					if (WMUtil.isUserInMyGroups(item.userName, Model.instance.currentUserInfo, Model.instance.groups))
+					{
+						return true;
+					}
+        		}
+				if (Model.instance.privileges.canAssignIndividualJob)
+				{
+					if (item.userName == Model.instance.currentUserInfo.userName)
+					{
+						return true;
+					}
+				}
+				return false;
+	        }
+
+	        private function groupFilter(item:GroupInfo, index:int, array:Array):Boolean
+	        {
+        		if (Model.instance.privileges.canAssignAnyJob)
+        		{
+        			return true;
+        		}
+    			if (_selectedJobTypeDetail.defaultAssignedType == JobAssignmentTypeEnum.ASSIGNED_TO_GROUP
+					&& _selectedJobTypeDetail.defaultAssignedTo == item.name)
+    			{
+					return true;
+    			}
+	        	for each (var group:GroupMembership in Model.instance.currentUserInfo.groups)
+	        	{
+	        		if (item.id == group.id)
+	        		{
+	        			return true;
+	        		}
+	        	}
+	        	return false;
+	        }
+			
+			private function btnCreate_clickHandler():void
+			{				
+				var params:JobCreationParameters = new JobCreationParameters();
+				params.jobTypeId = _selectedJobTypeDetail.id;
+				_isValidAssignment = true;
+				if (_jobAssignable)
+				{
+					params.assignedType = assignTree.selectedAssignedType;
+					params.assignedTo = assignTree.selectedAssignedTo;
+					if (params.assignedType == JobAssignmentTypeEnum.NONE)
+					{
+						_isValidAssignment = false;
+						Alert.show(Model.resource("ErrorAssignmentInput"), Model.resource("ErrorTitle"));
+						return;
+					}
+				}
+				else
+				{
+					params.assignedType = _selectedJobTypeDetail.defaultAssignedType;
+					params.assignedTo = _selectedJobTypeDetail.defaultAssignedTo;
+				}
+				if (Model.instance.privileges.canChangeJobOwner)
+				{
+					params.ownedBy = (cboOwnedBy.selectedItem as UserInfo).userName;
+				}
+				else
+				{
+					params.ownedBy = Model.instance.currentUserInfo.userName;
+				}
+				
+				//Handle a job type's default job duration when creating a job
+				if (_selectedJobTypeDetail.defaultDueDate != null) 
+				{
+					params.dueDate = dueDateField.selectedDate;
+				}
+				else if (_selectedJobTypeDetail.defaultJobDuration > 0)
+				{
+					var dueDate:Date = new Date(startDateField.selectedDate);
+					dueDate["date"] += _selectedJobTypeDetail.defaultJobDuration;
+					params.dueDate = dueDate;
+				}
+				
+				params.startDate = startDateField.selectedDate;
+				// TODO: this overrides the above due date logic
+				params.dueDate = dueDateField.selectedDate;
+				params.priority = (cboPriority.selectedItem as JobPriority).value;
+				params.description = txtDescription.text;
+				
+				var dataWorkspace:DataWorkspace = DataWorkspace(cboDataWorkspace.selectedItem);
+				if (dataWorkspace)
+				{
+					params.dataWorkspaceId = dataWorkspace.id;
+				}
+				var version:VersionInfo = VersionInfo(cboParentVersion.selectedItem);
+				if(version)
+				{
+					params.parentVersion = version.name;
+				}
+				
+				var prefix:String = txtPrefix.text;
+				var suffix:String = txtSuffix.text;
+				
+				CentralDispatcher.dispatchEvent(new CreateJobEvent(params, prefix, suffix));
+				PopUpManager.removePopUp(this);
+			}
+			
+			private function btnCancel_clickHandler():void
+			{
+				PopUpManager.removePopUp(this);
+			}
+			
+			override protected function keyDownHandler(event:KeyboardEvent):void
+			{
+				if (event.keyCode == Keyboard.ESCAPE)
+				{
+					btnCancel_clickHandler();
+				}
+			}
+			
+			private function startDateChanged():void
+			{
+				if (startDateField.selectedDate != null)
+				{
+					dueDateField.selectableRange = {rangeStart:startDateField.selectedDate};
+					if (_selectedJobTypeDetail.defaultJobDuration > 0)
+					{
+						var newDueDate:Date = new Date(startDateField.selectedDate);
+						newDueDate["date"] += _selectedJobTypeDetail.defaultJobDuration;
+						// update the due date if it has not been already set or if the current 
+						// dueDateField is earlier than the calculated new due date field
+						if (!dueDateField.selectedDate ||
+							newDueDate > dueDateField.selectedDate)
+						{
+							dueDateField.selectedDate = newDueDate;
+						}
+					}
+					else if (dueDateField.selectedDate != null && 
+						startDateField.selectedDate > dueDateField.selectedDate)
+					{
+						// no job duration, but still need to check that due date field is
+						// not earlier than start date
+						dueDateField.selectedDate = startDateField.selectedDate;
+					}
+				}
+				else
+				{
+					dueDateField.selectableRange = null;
+				}
+			}
+			
+			private function dataWorkspaceChanged():void
+			{				
+				_jobParentVersions = new ArrayCollection();
+				var dataWorkspace:DataWorkspace = DataWorkspace(cboDataWorkspace.selectedItem);
+				if (dataWorkspace.id == null || dataWorkspace.id == "") // no data workspace
+				{					
+					_canChangeParentVersion = false;
+					_showDataWorkspaceVersionsError = false;
+				}	
+				else
+				{
+					var dataWorkspaceVersions:Array = new Array(); 
+					for each (var dataWorkspaceDetails:DataWorkspaceDetails in Model.instance.dataWorkspaceDetails)
+					{
+						if (dataWorkspaceDetails.id == dataWorkspace.id)
+						{
+							//update parent version
+							for each (var version:VersionInfo in dataWorkspaceDetails.versions)
+							{
+								if (version.name != Model.resource("NoVersion"))
+								{
+									_jobParentVersions.addItem(version);
+									if (version.name == dataWorkspaceDetails.defaultVersion)
+									{
+										cboParentVersion.selectedItem = version;
+									}
+								}
+							}							
+							break;
+						}
+					}
+					
+					// _jobParentVersions should have been populated, otherwise there was an error
+					// retrieving version info for the data workspace
+					_showDataWorkspaceVersionsError = 
+						(_jobParentVersions == null || _jobParentVersions.length == 0) ? true : false;
+
+					// only allow to change the parent version of there was no error
+					_canChangeParentVersion = !_showDataWorkspaceVersionsError
+				}
+			}
+			
+			private function formatDate(date:Date):String 
+			{
+				return dateFormatter.format(date);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:DateFormatter id="dateFormatter" 
+						  formatString="{Model.instance.configModel.jobPropertiesDateFormat}"/>
+	</fx:Declarations>
+	
+	<mx:Canvas width="100%">
+		<mx:Label text="@Resource(bundle='WMResources',key='CreateNewJob')" fontWeight="bold" color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox backgroundColor="#93afbe" backgroundAlpha="1"
+			 paddingTop="5" paddingBottom="5" paddingLeft="5" paddingRight="5">
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='JobType')"
+					  width="101" textAlign="right"/>
+			<mx:ComboBox id="cboJobType" change="setJobTypeDefaults()" labelField="name"/>
+		</mx:HBox>		
+		<mx:HBox visible="{_jobAssignable}" includeInLayout="{_jobAssignable}">
+			<mx:Label text="@Resource(bundle='WMResources',key='AssignedTo')" 
+					  width="101" textAlign="right"/>
+			<components:JobAssignmentComboBox id="assignTree" width="200" treeHeight="200"
+											  unassignedLabel="@Resource(bundle='WMResources',key='Unassigned')"
+											  userFolderLabel="@Resource(bundle='WMResources',key='User')"
+											  groupFolderLabel="@Resource(bundle='WMResources',key='Group')"
+											  />
+			<mx:Label text="@Resource(bundle='WMResources',key='InvalidAssignment')" 
+					  color="red"
+					  visible="{!_isValidAssignment}" 
+					  includeInLayout="{!_isValidAssignment}" />
+		</mx:HBox>
+		<mx:HBox visible="{!_jobAssignable}" includeInLayout="{!_jobAssignable}" verticalAlign="middle">
+			<mx:Label text="@Resource(bundle='WMResources',key='AssignedTo')"
+					  width="101" textAlign="right"/>
+			<mx:Label id="lblAssignedTo"/>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='StartDate')"
+					  width="101" textAlign="right"/>
+			<mx:DateField id="startDateField" 
+						  showToday="true" 
+						  selectedDate="{_selectedJobTypeDetail.defaultStartDate}"
+						  labelFunction="formatDate" parseFunction="null" width="160"
+						  change="startDateChanged()"/>
+			<mx:Spacer width="5"/>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='DueDate')"
+					  width="101" textAlign="right"/>
+			<mx:DateField id="dueDateField" 
+						  showToday="true" 
+						  selectedDate="{_selectedJobTypeDetail.defaultDueDate}" 
+						  selectableRange="{
+							  startDateField.selectedDate != null 
+							  ? {rangeStart:startDateField.selectedDate}
+							  : null}"
+						  labelFunction="formatDate" parseFunction="null" width="160"/>
+		</mx:HBox>
+		<mx:HBox visible="{_showDataWorkspaceVersionsError}" includeInLayout="{_showDataWorkspaceVersionsError}" verticalAlign="middle">
+			<mx:Label text="" width="101"/>
+			<mx:Label text="@Resource(bundle='WMResources',key='DataWorkspaceVersionsUnavailable')" 
+					  width="300" textAlign="left" color="red"/>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='DataWorkspace')" 
+					  width="101" textAlign="right"/>			
+			<mx:ComboBox id="cboDataWorkspace" width="200" labelField="name"
+						 dataProvider="{Model.instance.serviceInfo.dataWorkspaces}"
+						 change="dataWorkspaceChanged()"
+						 enabled="{ Model.instance.privileges.canManageDataWorkspace 
+						 		&amp;&amp; _canDataWorkspaceChange}"/>
+		</mx:HBox>	
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='ParentVersion')" 
+					  width="101" textAlign="right"/>
+			<mx:ComboBox id="cboParentVersion" labelField="name" width="160"
+						 dataProvider="{_jobParentVersions}"
+						 enabled="{_canChangeParentVersion}"/>
+		</mx:HBox>	
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='Priority')"
+					  width="101" textAlign="right"/>
+			<mx:ComboBox id="cboPriority" 
+						 dataProvider="{Model.instance.serviceInfo.jobPriorities}"
+						 labelField="name"/>
+		</mx:HBox>
+		<mx:HBox visible="{Model.instance.privileges.canChangeJobOwner}"
+				 includeInLayout="{Model.instance.privileges.canChangeJobOwner}"
+				 verticalAlign="middle">
+			<mx:Label text="@Resource(bundle='WMResources',key='OwnedBy')"
+					  width="101" textAlign="right"/>
+			<mx:ComboBox id="cboOwnedBy"/>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='jobNamePrefix')"
+					  width="101" textAlign="right"/>
+			<mx:TextInput id="txtPrefix" width="200"/>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='jobNameSuffix')"
+					  width="101" textAlign="right"/>
+			<mx:TextInput  id="txtSuffix" width="200"/>
+		</mx:HBox>
+		<mx:HBox visible="{!Model.instance.privileges.canChangeJobOwner}"
+				 includeInLayout="{!Model.instance.privileges.canChangeJobOwner}"
+				 verticalAlign="middle">
+			<mx:Label text="@Resource(bundle='WMResources',key='OwnedBy')"
+					  width="101" textAlign="right"/>
+			<mx:Label id="lblOwnedBy" 
+					  text="{Model.instance.currentUserInfo.fullName}"/>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:VBox verticalGap="0">
+				<mx:Label text="@Resource(bundle='WMResources',key='Description')"
+						  width="101" textAlign="right"/>
+				<mx:Label color="#043458" fontStyle="italic"
+						  text="@Resource(bundle='WMResources',key='MaxDescriptionLength')" 
+						  width="101" textAlign="right"/>
+			</mx:VBox>
+			<mx:TextArea id="txtDescription" 
+						 width="300" height="120"
+						 maxChars="500" 
+						 text="{_selectedJobTypeDetail.defaultDescription}"/>
+		</mx:HBox>
+		<mx:HBox width="100%" paddingLeft="109">
+			<mx:Button label="@Resource(bundle='WMResources',key='Create')"					   
+					   click="btnCreate_clickHandler()"/>
+			<mx:Button label="@Resource(bundle='WMResources',key='Cancel')" 
+					   click="btnCancel_clickHandler()"/>
+		</mx:HBox>
+	</mx:VBox>
+</mx:VBox>

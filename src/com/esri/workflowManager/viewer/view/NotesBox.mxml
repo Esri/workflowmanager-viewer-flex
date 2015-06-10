@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009" 
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.viewer.events.UpdateJobNotesEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			private function btnSave_clickHandler():void
+			{
+				if (editable)
+				{
+					CentralDispatcher.dispatchEvent(new UpdateJobNotesEvent(Model.instance.selectedJob.id, txtNotes.text));
+				}
+			}
+
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<fx:Boolean id="editable">{
+			Model.instance.selectedJob != null
+			&amp;&amp; Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; !Model.instance.isSelectedJobOnHold 
+			&amp;&amp; (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.UNASSIGNED
+				|| Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName  
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+			)
+		}</fx:Boolean>
+		
+		<fx:Boolean id="selectedJobNotNull">{
+			Model.instance.selectedJob != null 
+		}</fx:Boolean>
+	</fx:Declarations>
+	
+	<mx:TextArea id="txtNotes" width="100%" height="100%" maxWidth="500"
+				 editable="{editable}" 
+				 text="{Model.instance.selectedJobNotes}" 
+				 visible="{selectedJobNotNull}"/>
+	<mx:Button click="btnSave_clickHandler()"
+			   label="@Resource(bundle='WMResources',key='SaveChanges')" 
+			   visible="{editable}" includeInLayout="{editable}"/>
+</supportClasses:BaseJobView>

@@ -1,0 +1,318 @@
+@namespace s "library://ns.adobe.com/flex/spark";
+@namespace mx "library://ns.adobe.com/flex/mx";
+@namespace esri "http://www.esri.com/2008/ags";
+@namespace esriComponentSupportClasses "com.esri.ags.components.supportClasses.*";
+
+esri|Navigation
+{
+	left: 10;
+	top: 35;
+	skin-class: ClassReference("com.esri.workflowManager.viewer.view.supportClasses.NavigationSkin");
+}
+
+/*
+esriComponentSupportClasses|InfoContainer
+{
+	background-color: #2b5d78;
+	background-alpha: 0.9;
+}
+*/
+
+esriComponentSupportClasses|InfoWindowLabel
+{
+	color: #ffffff;	
+	font-size: 10;
+}
+
+mx|Application 
+{
+	background-color: #2b5d78;	
+	background-alpha: 1;
+	color: #000000;
+	themeColor: #063954;
+}
+
+/*
+mx|TabNavigator
+{
+	background-color: #87AABD;	
+	borderColor: #2b5d78;
+	tab-style-name: "tabStyle";
+	selected-tab-text-style-name: "selectedTabTextStyle";
+}
+*/
+
+mx|Alert {
+	background-alpha: 0.9;
+	border-alpha: 1;
+	border-color: #2b5d78;
+	background-color: #2b5d78;
+	button-style-name: Button;
+}
+
+mx|DateField {
+	dateChooserStyleName: "dateChooser";	
+}
+
+mx|ApplicationControlBar {
+   fillAlphas: 0.49, 0.4;
+   fillColors: #336e77, #2b5d78;
+   cornerRadius: 2;
+   color: #ffffff;
+}
+
+mx|ToggleButtonBar {
+   buttonWidth: 75;
+}
+
+mx|Button
+{
+   fillAlphas: 0.9, 0.9, 0.65, 0.65;
+   fillColors: #336e77, #2b5d78, #2b5d78, #336e77;
+   borderColor: #2b5d78;
+   color: #ffffff;
+   text-roll-over-color: #ffffff;
+}
+
+mx|ToolTip {
+   backgroundAlpha: 0.9;
+   backgroundColor: #2b5d78;
+   color: #ffffff;
+}
+
+mx|LinkButton {
+	skin: ClassReference(null);
+	padding-left: 0;
+	padding-right: 0;
+   	textSelectedColor: #B5CAD6;
+   	font-weight: bold;
+}
+
+mx|Tree 
+{
+   borderStyle: none;
+   rollOverColor: #60879d;
+   selectionColor: #60879d;
+   text-selected-color: #ffffff;
+}
+
+mx|DataGrid {
+   backgroundAlpha: 1;
+   headerColors: #336e77, #2b5d78;
+   alternating-item-colors: #B5CAD6, #C9DAE4;
+   rollOverColor: #87AABD;
+   selectionColor: #60879d;
+   text-selected-color: #ffffff;
+   verticalGridLineColor: #063954;
+   borderColor: #063954;
+   dropShadowEnabled: true;
+   headerStyleName: "dataGridHeaderStyle";
+}
+
+mx|RadioButton {
+	color: #000000;	
+	icon-color: #C9DAE4;
+}
+
+mx|ComboBox {
+   alternating-item-colors: #B5CAD6, #B5CAD6;
+   rollOverColor: #87AABD;
+   selectionColor: #60879d;
+   text-selected-color: #ffffff;
+   icon-color: #C9DAE4;
+   color: #ffffff;
+   dropdown-style-name: "cboDropDownStyle";
+}
+
+mx|TextInput, mx|TextArea
+{
+	borderStyle: inset;
+	borderColor: #000000;
+	backgroundColor: #B5CAD6;
+	color: #000000;
+}
+
+.tabStyle
+{
+	background-color: #87AABD;	
+}
+
+.selectedTabTextStyle
+{
+	color: #000000;	
+}
+
+.dataGridHeaderStyle {
+	color: #ffffff;
+}
+
+.cboDropDownStyle {
+	color: #000000;	
+	font-weight: "normal";
+	border-color: #063954;
+	border-sides: "left", "right", "bottom";
+	drop-shadow-enabled: true;
+}
+
+.dateChooser {
+	headerColors: #6089a0, #4c7286;
+	todayColor: #B5CAD6;
+	rollOverColor: #87AABD;
+	selectionColor: #60879d;
+	color: #000000;
+	borderColor: #2b5d78;
+	iconColor: #c9dae4;
+	backgroundColor: #B5CAD6;
+	dropShadowEnabled: true;
+	headerStyleName: "dateChooserHeaderStyle";
+	todayStyleName: "dateChooserTodayStyle";
+}
+
+.dateChooserTodayStyle {
+	fontWeight: bold;
+	fontStyle: normal;
+	textDecoration: none;
+}
+
+.dateChooserHeaderStyle {
+	color: #ffffff;
+	fontWeight: bold;
+}
+
+.largeButtonStyle
+{
+	cornerRadius: 0;
+	font-size: 10;
+	text-align: left;
+}
+
+.attachmentGroup
+{
+	padding-bottom: 5;
+	padding-left: 5;
+	padding-right: 5;
+	padding-top: 5;
+	backgroundAlpha:0.5;
+	backgroundColor:#719EB6;
+	borderColor:#2b5d78;
+	border-alpha: 0.5;
+	border-style: solid;
+	borderThickness:1;	
+	corner-radius: 3;
+}
+
+.attachmentLinkButton
+{
+	skin: ClassReference(null);
+	padding-left: 0;
+	padding-right: 0;
+	color: #043458;
+	text-decoration: underline;
+	textRollOverColor: #2b5d78;
+	textSelectedColor: #B5CAD6;
+	font-weight: bold;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.reportLinkButton
+{
+	skin: ClassReference(null);
+	padding-left: 0;
+	padding-right: 0;
+	color: #043458;
+	text-decoration: underline;
+	textRollOverColor: #2b5d78;
+	textSelectedColor: #B5CAD6;
+	font-weight: normal;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.clearDateLinkButton
+{
+	skin: ClassReference(null);
+	padding-left: 0;
+	padding-right: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+	color: #043458;
+	text-decoration: underline;
+	textRollOverColor: #2b5d78;
+	textSelectedColor: #B5CAD6;
+	font-weight: normal;
+}
+
+.logoutLinkButton
+{
+	skin: ClassReference(null);
+	padding-left: 0;
+	padding-right: 0;
+	color: #cccccc;
+	text-decoration: underline;
+	textRollOverColor: #B5CAD6;
+	textSelectedColor: #B5CAD6;
+	font-weight: bold;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.saveChangesLinkButton
+{
+	skin: ClassReference(null);
+	padding-left: 0;
+	padding-right: 0;
+	color: #EEEE00;
+	text-decoration: underline;
+	textRollOverColor: #FFFF99;
+	textSelectedColor: #FFFF99;
+	font-weight: bold;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.controlGroupCanvas
+{
+	backgroundAlpha:0.5;
+	backgroundColor:#719EB6;
+	borderColor:#2b5d78;
+	border-alpha: 0.5;
+	border-style: solid;
+	borderThickness:1;	
+	corner-radius: 3;
+}
+
+.bannerCanvas
+{
+	backgroundColor: #0D476C; 
+	borderSides: "bottom"; 
+	borderColor: #000000; 
+	borderStyle: solid; 
+	borderThickness: 1;
+	dropShadowEnabled: true;
+}
+
+.popUpBox
+{
+	backgroundColor: #0D476C; 
+	paddingBottom: 10; 
+	paddingLeft: 10; 
+	paddingRight: 10; 
+	paddingTop: 5; 
+	dropShadowEnabled: true;
+	borderStyle: solid; 
+	borderColor: #333333; 
+	backgroundAlpha: 0.75; 
+	cornerRadius: 3;
+}
+
+.menuBox
+{
+	backgroundColor: #93afbe; 
+	backgroundAlpha: 1;
+}
+
+.loggedInLabel
+{
+	color: #cccccc;
+}

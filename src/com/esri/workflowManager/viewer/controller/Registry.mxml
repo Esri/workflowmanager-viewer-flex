@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<h:AbstractRegistry xmlns:h="com.esri.holistic.*" 
+					xmlns:fx="http://ns.adobe.com/mxml/2009"
+					xmlns:controller="com.esri.workflowManager.viewer.controller.*">
+	<fx:Declarations>
+		<controller:AddHoldCommand id="addHoldCommand"/>
+		<controller:AddLinkedFileAttachmentCommand id="addLinkedFileAttachmentCommand"/>
+		<controller:AddLinkedURLAttachmentCommand id="addLinkedURLAttachmentCommand"/>
+		<controller:AOIBoxCreationCompleteCommand id="aoiBoxCreationCompleteCommand"/>
+		<controller:AOIMapClickCommand id="aoiMapClickCommand"/>
+		<controller:ApplicationCompleteCommand id="applicationCompleteCommand"/>
+		<controller:AssignJobsCommand id="assignJobsCommand"/>
+		<controller:BasemapCommand id="baseMapCommand"/>
+		<controller:CloseJobCommand id="closeJobCommand"/>
+		<controller:CreateJobCommand id="createJobCommand"/>
+		<controller:DeleteJobAttachmentCommand id="deleteJobAttachmentCommand"/>
+		<controller:DeleteJobsCommand id="deleteJobsCommand"/>
+		<controller:ExecuteStepCommand id="executeStepCommand"/>
+		<controller:ExportMapCommand id="exportMapCommand"/>
+		<controller:JobQueryCommand id="jobQueryCommand"/>
+		<controller:LoadServiceCommand id="loadServiceCommand"/>
+		<controller:LogActivityCommand id="logActivityCommand"/>
+		<controller:LoginCommand id="loginCommand"/>
+		<controller:LogoutCommand id="logoutCommand"/>
+		<controller:MarkAsDoneCommand id="markAsDoneCommand"/>
+		<controller:MenuCommand id="menuCommand"/>
+		<controller:MoveNextCommand id="moveNextCommand"/>
+		<controller:OperationCommand id="operationCommand"/>
+		<controller:PropertiesDirtyCommand id="propertiesDirtyCommand"/>
+		<controller:RecreateWorkflowCommand id="recreateWorkflowCommand"/>
+		<controller:ReloadGroupsCommand id="reloadGroupsCommand"/>
+		<controller:ReloadUsersCommand id="reloadUsersCommand"/>
+		<controller:ReopenClosedJobsCommand id="reopenClosedJobsCommand"/>
+		<controller:ResolveConflictCommand id="resolveConflictCommand"/>
+		<controller:SelectedJobAOICommand id="selectedJobAOICommand"/>
+		<controller:SelectedJobAttachmentsCommand id="selectedJobAttachmentsCommand"/>
+		<controller:SelectedJobExtendedPropertiesCommand id="selectedJobExtendedPropertiesCommand"/>
+		<controller:SelectedJobHistoryCommand id="selectedJobHistoryCommand"/>
+		<controller:SelectedJobHoldsCommand id="selectedJobHoldsCommand"/>
+		<controller:SelectedJobNotesCommand id="selectedJobNotesCommand"/>
+		<controller:SelectedJobRelationshipsCommand id="selectedJobRelationshipsCommand"/>
+		<controller:SelectedJobWorkflowCommand id="selectedJobWorkflowCommand"/>
+		<controller:SelectJobCommand id="selectedJobCommand"/>
+		<controller:UniqueValueChartCommand id="uniqueValueChartCommand"/>
+		<controller:UniqueValueFilterJobsCommand id="uniqueValueFilterJobsCommand"/>
+		<controller:UpdateJobAOICommand id="updateJobAOICommand"/>
+		<controller:UpdateJobNotesCommand id="updateJobNotesCommand"/>
+		<controller:UpdateJobPropertiesCommand id="updateJobPropertiesCommand"/>
+		<controller:UploadJobAttachmentCommand id="uploadJobAttachmentCommand"/>
+		<controller:ViewCommand id="viewCommand"/>
+	</fx:Declarations>
+</h:AbstractRegistry>

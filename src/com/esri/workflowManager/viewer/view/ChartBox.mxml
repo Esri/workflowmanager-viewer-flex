@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 verticalGap="0"
+		 width="100%" 
+		 height="100%" 
+		 xmlns:s="library://ns.adobe.com/flex/spark">
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.QueryFieldInfo;
+			import com.esri.workflowManager.viewer.events.UniqueValueChartEvent;
+			import com.esri.workflowManager.viewer.events.UniqueValueFilterJobsEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.charts.ChartItem;
+			import mx.charts.PieChart;
+			import mx.charts.effects.SeriesInterpolate;
+			import mx.charts.events.ChartItemEvent;
+			import mx.charts.series.PieSeries;
+			import mx.containers.Canvas;
+			import mx.effects.Resize;
+			import mx.events.FlexEvent;
+			import mx.graphics.GradientEntry;
+			import mx.graphics.IFill;
+			import mx.graphics.RadialGradient;
+			
+			private function btnResetChart_clickHandler():void
+			{
+				reset();
+                CentralDispatcher.dispatchEvent(new UniqueValueFilterJobsEvent(null, null));
+			}
+
+			private function reset():void
+			{
+				for (var i:int = 0; i < chartBox.numChildren; i++)
+				{
+					var obj:Object = chartBox.getChildAt(i);
+					if (obj is Canvas)
+					{
+						var canvas:Canvas = obj as Canvas;
+						for (var j:int = 0; j < canvas.numChildren; j++)
+						{
+							var child:Object = canvas.getChildAt(j);
+							if (child is PieChart)
+							{
+								var chart:PieChart = child as PieChart;
+								if (chart.series.length > 0)
+								{
+									var series:PieSeries = chart.series[0];
+									series.perWedgeExplodeRadius = [];
+								}
+							}
+						}
+					}
+				}
+			}
+			
+			private function chart_itemClickHandler(event:ChartItemEvent):void
+			{
+				reset();
+				var repeaterItem:Object = event.currentTarget.getRepeaterItem();
+				var groupName:String = repeaterItem.name;
+				var arr:Array = [];
+                arr[event.hitData.chartItem.index] = 0.1;
+              	(event.hitData.chartItem.element as PieSeries).perWedgeExplodeRadius = arr;
+              	if (Model.instance.chartingModel.chartGroupByField == null)
+              	{
+	                CentralDispatcher.dispatchEvent(new UniqueValueFilterJobsEvent(event.hitData.chartItem.item.name, null));
+	            }
+	            else
+	            {
+	                CentralDispatcher.dispatchEvent(new UniqueValueFilterJobsEvent(event.hitData.chartItem.item.name, groupName));
+	            }
+			}
+			
+            private function chartFillFunction(element:ChartItem, index:Number):IFill 
+            {
+				var color:uint = element.item.color;
+		        var g1:GradientEntry = new GradientEntry(color, 0, 1);
+		        var g2:GradientEntry = new GradientEntry(color, 0.5, 0.85);
+		        var g3:GradientEntry = new GradientEntry(color, 1, 0.8);
+            	var gradient:RadialGradient = new RadialGradient();
+       			gradient.entries = [ g1, g2, g3 ];
+				return gradient;
+            }
+			
+			private function chartParams_changeHandler():void
+			{
+				var categorizeByField:QueryFieldInfo = cboCategorizeBy.selectedItem as QueryFieldInfo;
+				var groupByField:QueryFieldInfo = cboGroupBy.selectedItem as QueryFieldInfo;				
+				CentralDispatcher.dispatchEvent(new UniqueValueChartEvent(categorizeByField, groupByField));
+				//groupColumnChart.series = [Model.instance.chartingModel.barSet];
+			}
+			
+			private function btnClearGroupBy_clickHandler():void
+			{
+				cboGroupBy.selectedIndex = -1;
+				var categorizeByField:QueryFieldInfo = cboCategorizeBy.selectedItem as QueryFieldInfo;
+				CentralDispatcher.dispatchEvent(new UniqueValueChartEvent(categorizeByField, null));	
+			}
+			private function showNoLabel(categoryValue:Object, previousCategoryValue:Object, axis:CategoryAxis, categoryItem:Object):String
+			{
+				return "";
+			}
+
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:Resize id="resize" duration="400"/>
+	</fx:Declarations>
+	
+	<mx:VBox horizontalAlign="center" 
+			 height="100%"
+			 width="100%" 
+			 paddingTop="10" 
+			 paddingLeft="10" 
+			 paddingBottom="10" 
+			 paddingRight="10">
+		
+		<mx:HBox horizontalGap="2" verticalAlign="middle" width="100%">
+			<mx:Label text="@Resource(bundle='WMResources',key='ChartType')" width="85" fontWeight="bold"/>
+			<mx:RadioButtonGroup id="chartGroup" />
+			<mx:RadioButton label="@Resource(bundle='WMResources',key='PieChart')" value="showPie" groupName="chartGroup" selected="true"/>
+			<mx:Spacer width="15"/>
+			<mx:RadioButton label="@Resource(bundle='WMResources',key='BarChart')" value="showBar" groupName="chartGroup" selected="false"/>			
+		</mx:HBox>
+		
+		<mx:HBox horizontalGap="2" 
+				 verticalAlign="middle" 
+				 width="100%">
+			<mx:Label text="@Resource(bundle='WMResources',key='CategorizeBy')" 
+					  width="85" 
+					  color="#043458" 
+					  fontWeight="bold"/>
+			<mx:ComboBox id="cboCategorizeBy" 
+						 width="140"
+						 selectedIndex="-1" 
+						 prompt="@Resource(bundle='WMResources',key='SelectPrompt')"
+						 change="chartParams_changeHandler()"
+						 dataProvider="{Model.instance.chartingModel.chartFields}" 
+						 labelField="alias" />
+		</mx:HBox>
+		<mx:HBox horizontalGap="2" 
+				 verticalAlign="middle" 
+				 width="100%" 
+				 visible="{cboCategorizeBy.selectedItem != null}">
+			<mx:Label text="@Resource(bundle='WMResources',key='GroupBy')" 
+					  width="85" 
+					  color="#043458" 
+					  fontWeight="bold"/>
+			<mx:ComboBox id="cboGroupBy" 
+						 width="140"
+						 selectedIndex="-1" 
+						 prompt="@Resource(bundle='WMResources',key='SelectPrompt')"
+						 change="chartParams_changeHandler()"
+						 dataProvider="{Model.instance.chartingModel.chartFields}" 
+						 labelField="alias"/>
+			<mx:LinkButton id="btnClearGroupBy" 
+						   click="btnClearGroupBy_clickHandler()"
+						   label="@Resource(bundle='WMResources',key='Clear')" 
+						   visible="{cboGroupBy.selectedIndex != -1}" 
+						   styleName="reportLinkButton"/>
+		</mx:HBox>
+		<mx:Text visible="{Model.instance.chartingModel.chartData != null}" 
+				 width="100%"
+				 text="@Resource(bundle='WMResources',key='ChartUsageHint')" 
+				 fontStyle="italic" />
+		<mx:VBox width="100%" height="100%" 
+				 visible="{cboGroupBy.selectedItem != null &amp;&amp; chartGroup.selectedValue=='showBar'}"
+				 includeInLayout="{cboGroupBy.selectedItem != null &amp;&amp; chartGroup.selectedValue=='showBar'}" >
+			<mx:BarChart id="groupColumnChart" height="450" width="100%" 
+						 series="{[Model.instance.chartingModel.barSet]}"										
+						 showDataTips="true" dataProvider="{Model.instance.chartingModel.barChartData}">
+				<mx:verticalAxis>
+					<mx:CategoryAxis categoryField="group" labelFunction="showNoLabel"/>
+				</mx:verticalAxis>	
+				<mx:horizontalAxis>
+					<mx:LinearAxis title="@Resource(bundle='WMResources',key='NumberOfJobs')"/>
+				</mx:horizontalAxis>
+			</mx:BarChart>	
+			<mx:Legend dataProvider="{groupColumnChart}"/>
+		</mx:VBox>		
+		<mx:VBox width="100%" height="375" 
+				 visible="{cboCategorizeBy.selectedItem != null  
+				 &amp;&amp; cboGroupBy.selectedItem == null
+				 &amp;&amp; chartGroup.selectedValue=='showBar'}"
+				 
+				 includeInLayout="{cboCategorizeBy.selectedItem != null
+				 &amp;&amp; cboGroupBy.selectedItem == null
+				 &amp;&amp; chartGroup.selectedValue=='showBar'}">
+			<mx:BarChart id="barChart" height="340" width="100%"  
+						 showDataTips="true" dataProvider="{Model.instance.chartingModel.chartData.getItemAt(0).data}">									
+				<mx:verticalAxis>
+					<mx:CategoryAxis categoryField="label" labelFunction="showNoLabel"/>
+				</mx:verticalAxis>	
+				<mx:horizontalAxis>
+					<mx:LinearAxis title="@Resource(bundle='WMResources',key='NumberOfJobs')"/>
+				</mx:horizontalAxis>
+				<mx:series>
+					<mx:BarSeries xField="value"  
+								  displayName="@Resource(bundle='WMResources',key='NumberOfJobs')"
+								  labelField="label"
+								  labelPosition="inside"
+								  labelAlign="left"/>
+				</mx:series>
+			</mx:BarChart>
+			
+		</mx:VBox>
+		<mx:VBox id="chartBox" 
+				 width="100%" 
+				 minHeight="0" 
+				 minWidth="0" 
+				 visible="{chartGroup.selectedValue=='showPie'}"
+				 includeInLayout="{chartGroup.selectedValue=='showPie'}"
+				 horizontalAlign="center"
+				 verticalScrollPolicy="off" 
+				 horizontalScrollPolicy="off"
+				 resizeEffect="{resize}">
+			<mx:Repeater id="chartRepeater" 
+						 width="100%" 
+						 dataProvider="{Model.instance.chartingModel.chartData}">
+				<mx:Canvas width="260" 
+						   height="265" 
+						   visible="{Model.instance.chartingModel.chartData != null}" 
+						   styleName="controlGroupCanvas">
+					<mx:Label horizontalCenter="0" 
+							  top="2" 
+							  text="{chartRepeater.currentItem.label}" 
+							  fontWeight="bold" 
+							  color="#043458"/>
+					<mx:PieChart width="246" 
+								 height="246" 
+								 top="13" 
+								 horizontalCenter="0"
+								 dataProvider="{chartRepeater.currentItem.data}"
+								 showDataTips="true"
+								 itemClick="chart_itemClickHandler(event)">
+						<mx:series>
+							<mx:PieSeries field="value" 
+										  nameField="label" 
+										  fillFunction="chartFillFunction">
+								<mx:showDataEffect>
+									<mx:SeriesInterpolate/>
+								</mx:showDataEffect>
+							</mx:PieSeries>
+						</mx:series>
+					</mx:PieChart>
+					<mx:Button bottom="2" 
+							   right="2"
+							   visible="{Model.instance.chartingModel.selectedChartCategory != null &amp;&amp; 
+							   		     (Model.instance.chartingModel.selectedChartGroup == chartRepeater.currentItem.name || Model.instance.chartingModel.selectedChartGroup == null)}"
+							   label="@Resource(bundle='WMResources',key='Reset')" 
+							   click="btnResetChart_clickHandler()"/>
+				</mx:Canvas>
+			</mx:Repeater>
+		</mx:VBox>			
+	</mx:VBox>
+</mx:VBox>

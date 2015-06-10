@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 styleName="popUpBox"
+		 creationComplete="creationCompleteHandler()"
+		 keyDown="keyDownHandler(event)"
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.viewer.events.JobQueryEvent;
+			import com.esri.workflowManager.viewer.model.JobSearch;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.managers.PopUpManager;
+			import mx.utils.StringUtil;
+			
+			private function creationCompleteHandler():void
+			{
+				txtSearchValue.setFocus();
+			}
+			
+			private function btnSearch_clickHandler():void
+			{
+				var queryText:String = txtSearchValue.text;
+				queryText = StringUtil.trim(queryText);
+				if (queryText.length == 0)
+				{
+					return;
+				}
+				CentralDispatcher.dispatchEvent(new JobQueryEvent(
+					Model.resource("SearchResults"), JobSearch.fromTextSearch(queryText)));
+				PopUpManager.removePopUp(this);
+			}
+			
+			private function btnCancel_clickHandler():void
+			{
+				PopUpManager.removePopUp(this);
+			}
+			
+			override protected function keyDownHandler(event:KeyboardEvent):void
+			{
+				if (event.keyCode == Keyboard.ESCAPE)
+				{
+					btnCancel_clickHandler();
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<mx:Canvas width="100%">
+		<mx:Label text="@Resource(bundle='WMResources',key='FindJobs')" 
+				  fontWeight="bold" 
+				  color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox backgroundColor="#93afbe" backgroundAlpha="1"
+			 paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10"
+			 >
+		<mx:Label text="@Resource(bundle='WMResources',key='SearchBy')"/>
+		<mx:HBox verticalAlign="middle" width="100%" paddingLeft="70">
+			<mx:TextInput id="txtSearchValue" enter="btnSearch_clickHandler()" width="100%" />
+		</mx:HBox>
+		<mx:Spacer height="5" />
+		<mx:HBox width="100%" horizontalAlign="right">
+			<mx:Button label="@Resource(bundle='WMResources',key='Search')" 
+					   click="btnSearch_clickHandler()"/>
+			<mx:Button label="@Resource(bundle='WMResources',key='Cancel')" 
+					   click="btnCancel_clickHandler()"/>
+		</mx:HBox>
+	</mx:VBox>
+</mx:VBox>

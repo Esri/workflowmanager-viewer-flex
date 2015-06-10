@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 width="100%" 
+		 height="100%" 
+		 verticalGap="0"
+		 creationComplete="creationCompleteHandler()" 
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.components.supportClasses.JobDataGridColumn;
+			import com.esri.workflowManager.tasks.supportClasses.QueryFieldInfo;
+			import com.esri.workflowManager.viewer.events.OperationEvent;
+			import com.esri.workflowManager.viewer.events.SelectJobEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.model.OperationType;
+			
+			import mx.binding.utils.ChangeWatcher;
+			import mx.collections.ArrayCollection;
+			import mx.controls.dataGridClasses.DataGridColumn;
+			import mx.effects.Fade;
+			import mx.events.CollectionEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.PropertyChangeEvent;
+			
+			[Bindable]
+			private var LinkBarArray:ArrayCollection=new ArrayCollection([]); 
+			
+			[Bindable]
+			private var jobChecked:Boolean = false;
+			
+			private var isInit:Boolean = true;
+			
+			private function creationCompleteHandler():void
+			{
+				ChangeWatcher.watch(Model.instance, "jobList", jobListChangeHandler);
+				ChangeWatcher.watch(Model.instance, "selectedJob", selectedJobChangeHandler);
+				jobGrid.addEventListener(CollectionEvent.COLLECTION_CHANGE, jobGridCollectionChangeHandler);
+			}
+
+			private function createLinkedBarArray():void
+			{
+				// TODO: these links need to be re-evaluated each time a user logs in
+				
+				if (Model.instance.privileges.canAssignAnyJob || 
+					Model.instance.privileges.canAssignGroupJob ||
+					Model.instance.privileges.canAssignIndividualJob)
+				{
+					var assignObj:Object = {
+						tag: OperationType.ASSIGN,
+						label: Model.resource("Assign"),
+						toolTip: Model.resource("AssignJobTip")
+					};
+					LinkBarArray.addItem(assignObj);
+				}
+				
+				if (Model.instance.privileges.canCloseJob)
+				{
+					var closeObj:Object = {
+						tag: OperationType.CLOSE,
+						label: Model.resource("Close"),
+						toolTip: Model.resource("CloseJobTip")
+					};
+					LinkBarArray.addItem(closeObj);
+				}
+				
+				if (Model.instance.privileges.canReopenClosedJobs)
+				{
+					var reopenClosedObj:Object = {
+						tag: OperationType.REOPEN,
+							label: Model.resource("Reopen"),
+							toolTip: Model.resource("ReopenClosedJobTip")
+					};
+					LinkBarArray.addItem(reopenClosedObj);
+				}
+				
+				if (Model.instance.privileges.canDeleteJob)
+				{
+					var deleteObj:Object = {
+						tag: OperationType.DELETE,
+						label: Model.resource("Delete"),
+						toolTip: Model.resource("DeleteJobTip")
+					};
+					LinkBarArray.addItem(deleteObj);			
+				}
+			}
+			
+			private function jobListChangeHandler(event:PropertyChangeEvent):void
+			{
+				if (event.newValue == null)
+				{
+					return;
+				}
+				var newColumns:Array = [];
+				var queryField:QueryFieldInfo;
+				var column:JobDataGridColumn;
+				for each (queryField in Model.instance.queryResultFields)
+				{
+					if (queryField.name != Model.instance.jobIdField)
+					{
+						column = new JobDataGridColumn();
+						column.dataField = queryField.name;
+						column.headerText = queryField.alias;
+						newColumns.push(column);
+					}
+				}
+				newColumns.unshift(jobGrid.columns[0]);
+				jobGrid.columns = newColumns;
+				
+				if(isInit)
+				{
+					createLinkedBarArray();
+					isInit=false;
+				}
+			}
+
+			private function selectedJobChangeHandler(event:PropertyChangeEvent):void
+			{
+				highlightSelectedJob();
+			}
+
+			private function jobGridCollectionChangeHandler(event:CollectionEvent):void
+			{
+				highlightSelectedJob();
+			}
+
+			private function highlightSelectedJob():void
+			{
+				var i:int;
+				var item:Object;
+				if (Model.instance.selectedJob && Model.instance.jobIdField)
+				{
+					for (i = 0; i < jobGrid.dataProvider.length; i++)
+					{
+						item = jobGrid.dataProvider.getItemAt(i);
+						if (item[Model.instance.jobIdField] == Model.instance.selectedJob.id)
+						{
+							jobGrid.selectedIndex = i;
+							jobGrid.validateNow();
+							jobGrid.scrollToIndex(i);
+							break;
+						}
+					}
+				}
+			}
+			
+			private function jobGridLabelFunction(item:Object, column:DataGridColumn):String
+			{
+				if (item[column.dataField] == null)
+				{
+					return "";
+				}
+				// This piece of code never actually gets called since date fields from query results are treated as strings
+				// Look at comment in JobQueryCommand.handleQueryResult()
+				//if (item[column.dataField] is Date)
+				//{
+				//	return dateFormatter.format(item[column.dataField]);
+				//}
+				return item[column.dataField].toString();
+			}
+			
+			private function jobGrid_itemClickHandler():void
+			{
+				if (Model.instance.jobIdField)
+				{
+					jobChecked = false;
+					for each (var jobObject:Object in Model.instance.jobList)
+					{
+						if (jobObject.selected)
+						{
+							jobChecked = true;
+						}
+					}
+					var jobId:int = jobGrid.selectedItem[Model.instance.jobIdField];
+					CentralDispatcher.dispatchEvent(new SelectJobEvent(jobId));
+				}
+			}
+			
+			private function selectedJobLinkBar_itemClickHandler(event:ItemClickEvent):void
+			{
+				jobChecked = false;
+				var operationType:int = event.item.tag;
+				CentralDispatcher.dispatchEvent(new OperationEvent(operationType));
+			}
+			
+
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<!-- Date formatter for job list is not needed since dates are treated as strings.
+				Look at comment in JobQueryCommand.handleQueryResult()
+		<mx:DateFormatter id="dateFormatter" 
+						  formatString="{Model.instance.configModel.jobListDateFormat}"/>
+		-->
+	</fx:Declarations>
+
+	<mx:ApplicationControlBar width="100%" 
+							  height="30"
+							  includeInLayout="{Model.instance.jobList != null &amp;&amp; Model.instance.jobList.length &gt; 0}" 
+							  visible="{Model.instance.jobList != null &amp;&amp; Model.instance.jobList.length &gt; 0}">
+		<mx:Canvas width="100%" 
+				   height="100%">
+			<mx:Label id="lblHeaderText" 
+					  text="{Model.instance.jobTableTitle}"
+					  verticalCenter="0" 
+					  fontWeight="bold"/>
+			<mx:LinkBar id="selectedJobLinkBar" 
+						right="0" 
+						verticalCenter="0" 
+						visible="{jobChecked}" 
+						includeInLayout="{jobChecked}" 
+						dataProvider="{LinkBarArray}"
+						itemClick="selectedJobLinkBar_itemClickHandler(event)" 
+						/>
+			<mx:HBox right="0" 
+					 verticalCenter="0" 
+					 verticalAlign="middle"
+					 visible="{!jobChecked}"
+					 includeInLayout="{!jobChecked}">
+				<mx:Label verticalCenter="0" 
+						  text="@Resource(bundle='WMResources',key='SelectJobToEditProperties')" 
+						  fontStyle="italic"/>
+			</mx:HBox>
+		</mx:Canvas>
+	</mx:ApplicationControlBar>
+	<mx:VBox width="100%" 
+			 height="100%" 
+			 minHeight="0" 
+			 minWidth="0" 
+			 paddingBottom="10" 
+			 paddingLeft="10" 
+			 paddingRight="10" 
+			 paddingTop="10" 
+			 backgroundColor="#93afbe" 
+			 backgroundAlpha="1">
+		<mx:DataGrid id="jobGrid" 
+					 width="100%" 
+					 height="100%" 
+					 horizontalScrollPolicy="auto" 
+					 labelFunction="jobGridLabelFunction"
+					 dataProvider="{Model.instance.jobList}"
+					 itemClick="jobGrid_itemClickHandler()"
+					 showEffect="{Fade}"
+					 includeInLayout="{Model.instance.jobList != null &amp;&amp; Model.instance.jobList.length &gt; 0}" 
+					 visible="{Model.instance.jobList != null &amp;&amp; Model.instance.jobList.length &gt; 0}">			
+			<mx:columns>
+				<mx:DataGridColumn width="30">
+					<mx:itemRenderer>
+						<fx:Component>
+							<mx:HBox width="100%" horizontalAlign="center">
+								<mx:CheckBox change="data.selected = event.target.selected" 
+											 selected="{data.selected}"/>
+							</mx:HBox>
+						</fx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>				
+			</mx:columns>
+		</mx:DataGrid>
+		
+
+		<mx:Text paddingTop="20" 
+				 textAlign="center" 
+				 width="100%" 
+				 text="@Resource(bundle='WMResources',key='NoJobsReturned')" 
+				 fontStyle="italic"
+				 includeInLayout="{(Model.instance.jobList == null || Model.instance.jobList.length == 0) 
+				 	&amp;&amp; Model.instance.lastJobSearch != null}" 
+				 visible="{(Model.instance.jobList == null || Model.instance.jobList.length == 0) 
+				 	&amp;&amp; Model.instance.lastJobSearch != null}"/>
+		<mx:Text paddingTop="20" 
+				 textAlign="center" 
+				 width="100%" 
+				 text="@Resource(bundle='WMResources',key='SelectQueryToExecute')" 
+				 fontStyle="italic"
+				 includeInLayout="{Model.instance.lastJobSearch == null &amp;&amp; Model.instance.selectedJob == null}" 
+				 visible="{Model.instance.lastJobSearch == null &amp;&amp; Model.instance.selectedJob == null}"/>
+	</mx:VBox>
+</mx:VBox>

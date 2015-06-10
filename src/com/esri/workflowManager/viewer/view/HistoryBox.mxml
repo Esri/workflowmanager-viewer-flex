@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.ActivityType;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.tasks.supportClasses.UserInfo;
+			import com.esri.workflowManager.viewer.events.LogActivityEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.controls.dataGridClasses.DataGridColumn;
+			
+			private function getDateLabel(item:Object, column:DataGridColumn):String
+			{
+				return dateFormatter.format(item[column.dataField]);
+			}
+
+			private function getUserLabel(item:Object, column:DataGridColumn):String
+			{
+				for each (var user:UserInfo in Model.instance.users)
+				{
+					if (user.userName == item[column.dataField])
+					{
+						return user.fullName;
+					}
+				}
+				// Return the raw username
+				return item[column.dataField];
+			}
+			
+			private function getActivityLabel(item:Object, column:DataGridColumn):String
+			{
+				for each (var activityType:ActivityType in Model.instance.serviceInfo.activityTypes)
+				{
+					if (activityType.id == item[column.dataField])
+					{
+						return activityType.description;
+					}
+				}
+				return item[column.dataField];
+			}
+			
+			private function btnAddComment_clickHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new LogActivityEvent(Model.instance.selectedJob.id, txtComments.text));
+				txtComments.text = "";
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:DateFormatter id="dateFormatter" 
+						  formatString="{Model.instance.configModel.jobHistoryDateFormat}"/>
+		
+		<fx:Boolean id="editable">{
+			Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; (!Model.instance.isSelectedJobOnHold
+				|| Model.instance.privileges.canAddCommentsToHeldJobs) 
+			&amp;&amp; (Model.instance.selectedJob != null) 
+			&amp;&amp; (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.UNASSIGNED
+				|| Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName  
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName 
+				)
+			)
+		}</fx:Boolean>
+		
+		<fx:Boolean id="selectedJobNotNull">{
+			Model.instance.selectedJob != null 
+		}</fx:Boolean>
+	</fx:Declarations>
+
+	<mx:HBox verticalAlign="middle" visible="{editable}" includeInLayout="{editable}">
+		<mx:Label text="@Resource(bundle='WMResources',key='AddComment')"/>
+		<mx:TextInput id="txtComments" width="200"
+					  enter="btnAddComment_clickHandler()"/>
+		<mx:Button id="btnAddComment" label="@Resource(bundle='WMResources',key='Add')"
+				   click="btnAddComment_clickHandler()" />
+	</mx:HBox>
+	<mx:HBox width="100%" height="100%" paddingRight="10" visible="{selectedJobNotNull}">
+		<mx:DataGrid width="100%" height="100%" 
+					 selectable="false"
+					 dataProvider="{Model.instance.selectedJobHistory}">
+			<mx:columns>
+				<mx:DataGridColumn dataField="date" 
+								   width="60" 
+								   headerText="@Resource(bundle='WMResources',key='Date')" 
+								   labelFunction="getDateLabel"/>
+				<mx:DataGridColumn dataField="user" 
+								   width="60" 
+								   headerText="@Resource(bundle='WMResources',key='User')" 
+								   labelFunction="getUserLabel"/>
+				<mx:DataGridColumn dataField="type" 
+								   headerText="@Resource(bundle='WMResources',key='ActivityType')" 
+								   labelFunction="getActivityLabel"/>
+				<mx:DataGridColumn dataField="message" 
+								   headerText="@Resource(bundle='WMResources',key='Message')"/>
+			</mx:columns>
+		</mx:DataGrid>
+	</mx:HBox>
+</supportClasses:BaseJobView>

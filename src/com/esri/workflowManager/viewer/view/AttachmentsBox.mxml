@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:s="library://ns.adobe.com/flex/spark" 
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobAttachment;
+			import com.esri.workflowManager.tasks.supportClasses.JobAttachmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.viewer.events.AddLinkedFileAttachmentEvent;
+			import com.esri.workflowManager.viewer.events.AddLinkedURLAttachmentEvent;
+			import com.esri.workflowManager.viewer.events.DeleteJobAttachmentEvent;
+			import com.esri.workflowManager.viewer.events.UploadJobAttachmentEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.utils.URLUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.ItemClickEvent;
+			
+			private var _fileReference:FileReference;
+			[Bindable] private var _fileReady:Boolean = false;
+			[Bindable] private var _showAddEmbedded:Boolean = false;
+			[Bindable] private var _showAddFile:Boolean = false;
+			[Bindable] private var _showAddURL:Boolean = false;
+			
+			private function reset():void
+			{
+				txtFileName.text = "";
+				txtAddFileName.text = "";
+				txtAddURLName.text = "http://";
+				_fileReady = false;
+				_showAddEmbedded = false;
+				_showAddFile = false;
+				_showAddURL = false;
+			}
+			
+			private function onFileSelect(event:Event):void
+			{
+				txtFileName.text = _fileReference.name;
+				_fileReady = true;
+			}
+
+			private function btnBrowse_clickHandler():void
+			{
+				_fileReference = new FileReference();
+				_fileReference.addEventListener(Event.SELECT, onFileSelect);
+				_fileReference.browse();
+			}
+			
+			private function btnUpload_clickHandler():void
+			{
+				if (_fileReference && _fileReady)
+				{
+					CentralDispatcher.dispatchEvent(new UploadJobAttachmentEvent(Model.instance.selectedJob.id, _fileReference));
+					reset();
+				}
+			}
+			
+			private function btnCancel_clickHandler():void
+			{
+				reset();
+			}
+			
+			private function attachmentLinkBar_itemClickHandler(event:ItemClickEvent):void
+			{
+				var attachment:JobAttachment = event.currentTarget.getRepeaterItem();
+				if (event.item.tag == "open")
+				{
+					if (attachment.storageType == JobAttachmentTypeEnum.EMBEDDED)
+					{
+						var url:String = Model.instance.jobTask.getAttachmentContentURL(Model.instance.selectedJob.id, attachment.id);
+						navigateToURL(new URLRequest(url), "_blank");
+					}
+					else if (attachment.storageType == JobAttachmentTypeEnum.LINKED_URL)
+					{
+						// Use absolute URL path when constructing the attachment link. 
+						// Call internal URLUtil tool since mx.utils.URLUtil.getProtocol() 
+						// doesn't work for protocols without a slash after the colon 
+						// (e.g. mailto:).
+						navigateToURL(new URLRequest(URLUtil.getAbsolutePathURL(attachment.url)), "_blank");
+					}
+					else if (attachment.storageType == JobAttachmentTypeEnum.LINKED_FILE)
+					{
+						Alert.show(Model.resource("ConfirmAttachmentClipboardCopy"), 
+								   Model.resource("LinkedAttachment"), 
+								   Alert.YES | Alert.NO, 
+								   null, 
+								   copyPathAlertListener, 
+								   null, 
+								   Alert.YES);
+					}
+				}
+				else if (event.item.tag == "delete")
+				{
+					if (Model.instance.isSelectedJobOnHold)
+					{
+						Alert.show(Model.resource("ErrorCannotDeleteAttachmentForHeldJob"), Model.resource("ErrorJobOnHold"));
+					}
+					else
+					{
+						Alert.show(Model.resource("ConfirmDeleteAttachment"), 
+								   Model.resource("DeleteAttachment"), 
+								   Alert.YES | Alert.NO,
+								   null, 
+								   deleteAttachmentAlertListener, 
+								   null, 
+								   Alert.NO);
+					}
+				}
+				
+				function copyPathAlertListener(event:CloseEvent):void
+				{
+					if (event.detail == Alert.YES)
+					{
+						System.setClipboard(attachment.label);
+					}
+				}
+				function deleteAttachmentAlertListener(event:CloseEvent):void
+				{
+					if (event.detail == Alert.YES)
+					{
+						CentralDispatcher.dispatchEvent(new DeleteJobAttachmentEvent(Model.instance.selectedJob.id, attachment.id));
+					}
+				}
+			}
+			
+			private function imgAddEmbedded_clickHandler():void
+			{
+				_showAddEmbedded = true;
+				_showAddFile = false;
+				_showAddURL = false;
+			}
+			
+			private function imgAddFile_clickHandler():void
+			{
+				_showAddEmbedded = false;
+				_showAddFile = true;
+				_showAddURL = false;
+			}
+			
+			private function imgAddURL_clickHandler():void
+			{
+				_showAddEmbedded = false;
+				_showAddFile = false;
+				_showAddURL = true;
+			}
+			
+			private function btnAddURL_clickHandler():void
+			{
+				var urlStr:String = txtAddURLName.text;
+				CentralDispatcher.dispatchEvent(new AddLinkedURLAttachmentEvent(Model.instance.selectedJob.id, urlStr));
+				reset();
+			}
+			
+			private function btnAddFile_clickHandler():void
+			{
+				var filePathStr:String = txtAddFileName.text;
+				CentralDispatcher.dispatchEvent(new AddLinkedFileAttachmentEvent(Model.instance.selectedJob.id, filePathStr));
+				reset();
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<fx:Boolean id="editable">{
+			Model.instance.selectedJob != null
+			&amp;&amp; Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canManageAttachments 
+			&amp;&amp; (!Model.instance.isSelectedJobOnHold 
+				|| Model.instance.privileges.canAddAttachmentsToHeldJobs)
+			&amp;&amp; (Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+			)
+		}</fx:Boolean>
+		
+		<fx:Boolean id="selectedJobNotNull">{
+			Model.instance.selectedJob != null 
+		}</fx:Boolean>
+	</fx:Declarations>
+	
+	<mx:HBox verticalAlign="middle"
+			 visible="{Model.instance.selectedJobAttachments.length == 0}"
+			 includeInLayout="{Model.instance.selectedJobAttachments.length == 0}"
+			 >
+		<mx:Label text="@Resource(bundle='WMResources',key='JobHasNoAttachments')" fontStyle="italic"/>
+	</mx:HBox>
+	<mx:VBox width="100%" maxWidth="400" verticalGap="0"
+			 visible="{Model.instance.selectedJobAttachments.length &gt; 0 &amp;&amp; selectedJobNotNull}"
+			 includeInLayout="{Model.instance.selectedJobAttachments.length &gt; 0 &amp;&amp; selectedJobNotNull}">
+		<mx:Repeater id="attachmentsRepeater" width="100%" height="100%" maxWidth="300" maxHeight="350" 
+					 dataProvider="{Model.instance.selectedJobAttachments}">
+			<mx:HBox verticalAlign="middle">
+				<mx:Label textAlign="left" fontWeight="bold" text="{attachmentsRepeater.currentItem.label}" width="250"/>
+				<mx:LinkBar id="attachmentLinkBar" 
+							linkButtonStyleName="attachmentLinkButton" 
+							separatorColor="#000000"
+							visible="{Model.instance.privileges.canManageAttachments}"								  		  
+							itemClick="attachmentLinkBar_itemClickHandler(event)">
+					<fx:Array>
+						<fx:Object tag="open" label="@Resource(bundle='WMResources',key='Open')"/>
+						<fx:Object tag="delete" label="@Resource(bundle='WMResources',key='Delete')"/>
+					</fx:Array>
+				</mx:LinkBar>
+			</mx:HBox>
+		</mx:Repeater>
+	</mx:VBox>
+	<mx:Spacer height="3"/>
+	<mx:VBox styleName="attachmentGroup" minWidth="350" minHeight="80"
+			 visible="{editable}" includeInLayout="{editable}">
+		<mx:HBox>
+			<mx:Label text="@Resource(bundle='WMResources',key='AddAttachment')" color="#FABB0C" fontSize="12" fontWeight="bold" paddingTop="9"/>
+			<mx:Image id="imgAddEmbedded" source="@Embed(source='/com/esri/workflowManager/viewer/assets/attachment_blue.png')"
+					  click="imgAddEmbedded_clickHandler()" toolTip="@Resource(bundle='WMResources',key='AddEmbeddedAttachment')" />
+			<mx:Image id="imgAddFile" source="@Embed(source='/com/esri/workflowManager/viewer/assets/file_link.png')"
+					  click="imgAddFile_clickHandler()" toolTip="@Resource(bundle='WMResources',key='AddFileLinkAttachment')" />
+			<mx:Image id="imgAddURL" source="@Embed(source='/com/esri/workflowManager/viewer/assets/url_link.png')"
+					  click="imgAddURL_clickHandler()" toolTip="@Resource(bundle='WMResources',key='AddURLLinkAttachment')" />							
+		</mx:HBox>
+		
+		<mx:VBox visible="{_showAddEmbedded}" includeInLayout="{_showAddEmbedded}">
+			<mx:HBox>
+				<mx:TextInput id="txtFileName" editable="false" width="250"/>
+				<mx:Button id="btnBrowse" click="btnBrowse_clickHandler()" label="@Resource(bundle='WMResources',key='Browse')"/>
+			</mx:HBox>
+			<mx:HBox includeInLayout="{_fileReady}" visible="{_fileReady}">
+				<mx:Button id="btnUpload" click="btnUpload_clickHandler()" label="@Resource(bundle='WMResources',key='Upload')"/>
+				<mx:Button id="btnCancel" click="btnCancel_clickHandler()" label="@Resource(bundle='WMResources',key='Cancel')"/>
+			</mx:HBox>
+		</mx:VBox>
+		
+		<mx:VBox  visible="{_showAddURL}" includeInLayout="{_showAddURL}">
+			<mx:HBox width="100%">
+				<mx:TextInput id="txtAddURLName" text="http://" width="250"/>
+				<mx:Button id="btnAddURL" click="btnAddURL_clickHandler()" label="@Resource(bundle='WMResources',key='Upload')"/>
+			</mx:HBox>
+			<s:Label text="http://www.esri.com"/>	
+		</mx:VBox>
+		
+		<mx:VBox visible="{_showAddFile}" includeInLayout="{_showAddFile}">
+			<mx:HBox>
+				<mx:TextInput id="txtAddFileName" width="250"/>
+				<mx:Button id="btnAddFile" click="btnAddFile_clickHandler()" label="@Resource(bundle='WMResources',key='Upload')"/>
+			</mx:HBox>
+			<s:Label text="@Resource(bundle='WMResources',key='FilePathPrompt')"/>
+		</mx:VBox>
+		
+	</mx:VBox>
+</supportClasses:BaseJobView>

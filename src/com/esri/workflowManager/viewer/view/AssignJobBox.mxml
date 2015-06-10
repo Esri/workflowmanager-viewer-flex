@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:components="com.esri.workflowManager.components.*"
+		 styleName="popUpBox"
+		 creationComplete="creationCompleteHandler()"
+		 keyDown="keyDownHandler(event)" 
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.GroupInfo;
+			import com.esri.workflowManager.tasks.supportClasses.GroupMembership;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.UserInfo;
+			import com.esri.workflowManager.viewer.events.AssignJobsEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.utils.WMUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.managers.PopUpManager;			
+			
+			public var jobIds:Array = [];
+			
+			private function creationCompleteHandler():void
+			{
+				var assignmentUsers:Array = Model.instance.users.filter(userFilter);
+				var assignmentGroups:Array = Model.instance.groups.filter(groupFilter);
+				assignTree.users = new ArrayCollection(assignmentUsers);
+				assignTree.groups = new ArrayCollection(assignmentGroups);
+			}
+			
+	        private function userFilter(item:UserInfo, index:int, array:Array):Boolean
+	        {
+        		if (Model.instance.privileges.canAssignAnyJob)
+        		{
+        			return true;
+        		}
+        		if (Model.instance.privileges.canAssignGroupJob)
+        		{
+					if (WMUtil.isUserInMyGroups(item.userName, Model.instance.currentUserInfo, Model.instance.groups))
+					{
+						return true;
+					}
+        		}
+				if (Model.instance.privileges.canAssignIndividualJob)
+				{
+					if (item.userName == Model.instance.currentUserInfo.userName)
+					{
+						return true;
+					}
+				}
+				return false;
+	        }
+
+	        private function groupFilter(item:GroupInfo, index:int, array:Array):Boolean
+	        {
+        		if (Model.instance.privileges.canAssignAnyJob)
+        		{
+        			return true;
+        		}
+	        	for each (var group:GroupMembership in Model.instance.currentUserInfo.groups)
+	        	{
+	        		if (item.id == group.id)
+	        		{
+	        			return true;
+	        		}
+	        	}
+	        	return false;
+	        }
+
+			private function btnAssign_clickHandler():void
+			{
+				var assignedType:int = assignTree.selectedAssignedType;
+				var assignedTo:String = assignTree.selectedAssignedTo;
+				if (assignedType == JobAssignmentTypeEnum.NONE)
+				{
+					Alert.show(Model.resource("ErrorAssignmentInput"), Model.resource("ErrorTitle"));
+					return;
+				}
+				else
+				{
+					CentralDispatcher.dispatchEvent(new AssignJobsEvent(jobIds, assignedType, assignedTo));
+					PopUpManager.removePopUp(this);
+				}
+			}
+			
+			private function btnCancel_clickHandler():void
+			{
+				PopUpManager.removePopUp(this);
+			}
+			
+			override protected function keyDownHandler(event:KeyboardEvent):void
+			{
+				if (event.keyCode == Keyboard.ESCAPE)
+				{
+					btnCancel_clickHandler();
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<mx:Canvas width="100%">
+		<mx:Label text="@Resource(bundle='WMResources',key='AssignJobTip')" fontWeight="bold" color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox backgroundColor="#93afbe" 
+			 backgroundAlpha="1" 
+			 paddingTop="5" 
+			 paddingBottom="5" 
+			 paddingLeft="10" 
+			 paddingRight="5">
+		<mx:HBox paddingTop="10">
+			<mx:Label text="@Resource(bundle='WMResources',key='AssignTo')" width="75" textAlign="left"/>
+			<components:JobAssignmentComboBox id="assignTree" width="200" treeHeight="150"
+											  unassignedLabel="@Resource(bundle='WMResources',key='Unassigned')"
+											  userFolderLabel="@Resource(bundle='WMResources',key='User')"
+											  groupFolderLabel="@Resource(bundle='WMResources',key='Group')"
+											  />
+		</mx:HBox>
+		<mx:HBox width="100%" 
+				 paddingLeft="82" paddingBottom="10" paddingTop="15">
+			<mx:Button label="@Resource(bundle='WMResources',key='Assign')"					   
+					   click="btnAssign_clickHandler()"/>
+			<mx:Button label="@Resource(bundle='WMResources',key='Cancel')" 
+					   click="btnCancel_clickHandler()"/>
+		</mx:HBox>
+	</mx:VBox>
+</mx:VBox>

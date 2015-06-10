@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:s="library://ns.adobe.com/flex/spark"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 styleName="popUpBox"
+		 minWidth="250"
+		 horizontalScrollPolicy="off"
+		 verticalScrollPolicy="off"
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.Step;
+			import com.esri.workflowManager.viewer.events.MoveNextEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.collections.ArrayCollection;
+			import mx.managers.PopUpManager;
+			
+			// Question input types
+			private static const BUTTON:int = 0;
+			private static const DROPDOWN:int = 1;
+			
+			[Bindable] private var stepId:int;
+			[Bindable] private var moveToNext:Boolean;
+			[Bindable] private var title:String;
+			[Bindable] private var question:String;
+			[Bindable] private var inputType:int = BUTTON;
+			[Bindable] private var collectNotes:Boolean = false;
+			[Bindable] private var answers:ArrayCollection; // of Object { label, code }
+			
+			public function initializeQuestionStep(step:Step):void
+			{
+				stepId = step.id;
+				moveToNext = step.selfCheck;
+				
+				var programParts:Array = step.stepType.program.split("|");
+				if (programParts.length > 0)
+				{
+					question = programParts[0];
+				}
+				if (programParts.length > 1)
+				{
+					title = programParts[1];
+				}
+				if (programParts.length > 2)
+				{
+					if (programParts[2] == "dd")
+					{
+						inputType = DROPDOWN;
+					}
+				}
+				if (programParts.length > 3)
+				{
+					if (programParts[3] == "note")
+					{
+						collectNotes = true;
+					}
+				}
+				
+				answers = new ArrayCollection();
+				var answerList:Array = step.stepType.arguments.split("|");
+				for (var i:int = 0; i < answerList.length; i++)
+				{
+					var answerParts:Array = String(answerList[i]).split(":");
+					if (answerParts.length == 1)
+					{
+						answers.addItem({label:answerParts[0], code:i});
+					}
+					else if (answerParts.length >= 2)
+					{
+						answers.addItem({label:answerParts[0], code:int(answerParts[1])});
+					}
+				}
+			}
+			
+			private function calculateColumnCount(answers:ArrayCollection):int
+			{
+				return (answers == null) ? -1 : Math.min(answers.length, 3);
+			}
+			
+			private function btnOK_clickHandler():void
+			{
+				handleAnswer(cboAnswers.selectedItem);
+			}
+
+			public function answerButtonClickHandler(data:Object):void
+			{
+				handleAnswer(data);
+			}
+			
+			private function handleAnswer(answer:Object):void
+			{
+				var returnCode:int = answer.code;
+				var answerLabel:String = answer.label;
+				var notes:String = collectNotes ? txtNotes.text : null;
+				CentralDispatcher.dispatchEvent(new MoveNextEvent(
+					Model.instance.selectedJob.id, stepId, returnCode, moveToNext, answerLabel, notes));
+				PopUpManager.removePopUp(this);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<mx:Canvas width="100%">
+		<mx:Label text="{title}" fontWeight="bold" color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox width="100%" horizontalAlign="left" verticalGap="10"
+			 backgroundColor="#93afbe" backgroundAlpha="1"
+			 paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10"
+			 horizontalScrollPolicy="off" verticalScrollPolicy="off"
+			 >
+		<mx:Text width="100%" text="{question}" />
+		<mx:VBox width="100%" horizontalAlign="center"
+				 visible="{inputType == DROPDOWN}"
+				 includeInLayout="{inputType == DROPDOWN}">
+			<mx:ComboBox id="cboAnswers" dataProvider="{answers}"/>
+		</mx:VBox>
+		<mx:VBox width="100%" horizontalAlign="left"
+				 visible="{collectNotes}"
+				 includeInLayout="{collectNotes}">
+			<s:Label text="@Resource(bundle='WMResources',key='QuestionNotes')"/>
+			<mx:TextInput id="txtNotes" width="100%" maxChars="200"/>
+		</mx:VBox>
+		<mx:VBox width="100%" horizontalAlign="center"
+				 visible="{inputType == DROPDOWN}"
+				 includeInLayout="{inputType == DROPDOWN}">
+			<mx:Button id="btnOK" minWidth="65"
+					   label="@Resource(bundle='WMResources',key='OK')" 
+					   click="btnOK_clickHandler()" />
+		</mx:VBox>
+		<s:DataGroup dataProvider="{answers}" width="100%"
+					 visible="{inputType == BUTTON}"
+					 includeInLayout="{inputType == BUTTON}">
+			<s:layout>
+				<s:TileLayout requestedColumnCount="{calculateColumnCount(answers)}"/>
+			</s:layout>
+			<s:itemRenderer>
+				<fx:Component>
+					<mx:Button label="{data.label}" width="100%" minWidth="65"
+							   click="outerDocument.answerButtonClickHandler(data)" />
+				</fx:Component>
+			</s:itemRenderer>
+		</s:DataGroup>
+	</mx:VBox>
+</mx:VBox>

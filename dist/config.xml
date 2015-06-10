@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+	<dateFormats>
+		<!--  
+			Options for the date formatter class can be found in mx:DateFormatter documentation link below
+			http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/mx/formatters/DateFormatter.html 
+		-->
+ 		<jobPropertiesDateFormat>MM/DD/YYYY</jobPropertiesDateFormat>
+ 		<jobHistoryDateFormat>MMM D, YYYY at L:NN A</jobHistoryDateFormat>
+ 		<jobHoldDateFormat>MMM D, YYYY</jobHoldDateFormat>
+ 	</dateFormats>
+	<initialExtent> 
+		<!-- In Web Mercator coordinates -->
+		<xmin>-16000000</xmin>
+		<ymin>2000000</ymin>
+		<xmax>-5000000</xmax>
+		<ymax>7000000</ymax>
+	</initialExtent>
+	<workflowService>
+		<url>http://workflowsample.esri.com:6080/arcgis/rest/services/Workflow/WMServer</url>
+	</workflowService>
+	<aoiMapService>
+		<url>http://workflowsample.esri.com:6080/arcgis/rest/services/AOI/MapServer</url>
+		<!-- The layer ID of the jobs AOI layer within the map service -->
+		<aoiLayerId>0</aoiLayerId>
+		<!-- List of layer IDs to show in the AOI map service (optional) -->
+		<visibleLayers></visibleLayers>
+		<!-- Opacity of the map layer -->
+		<alpha>0.75</alpha>
+	</aoiMapService>
+	<geometryService>
+		<url>http://tasks.arcgisonline.com/ArcGIS/rest/services/Geometry/GeometryServer</url>
+	</geometryService>
+	<!-- The print service will need access to the AOI map service specified above. -->
+	<printService>
+		<url>http://sampleserver6.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task</url>
+	</printService>
+	<basemaps initial="Topo">
+		<basemap label="Streets">
+			<layer type="tiled" url="http://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer" />
+		</basemap>
+		<basemap label="Imagery">
+			<layer type="tiled" url="http://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer" />
+			<layer type="tiled" alpha="0.75" url="http://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer" />
+		</basemap>
+		<basemap label="Topo">
+			<layer type="tiled" url="http://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer" />
+		</basemap>
+	</basemaps>
+	<authentication>
+		<defaultUsername>demo</defaultUsername>
+		<!-- true or false, case-sensitive, applicable only when defaultUsername is set and token authentication is disabled -->
+		<autoLogin>false</autoLogin>
+		<tokenAuthentication>
+			<!-- true or false, case-sensitive -->
+			<enabled>false</enabled>
+			<!-- URL of token service, ignored if enabled is set to false -->
+			<url>http://your-server/arcgis/tokens</url>
+			<!-- Duration in minutes a token is valid. Long-lived tokens are generated -->
+			<tokenDuration>10</tokenDuration>
+		</tokenAuthentication>
+	</authentication>
+</configuration>

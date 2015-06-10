@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							creationComplete="creationCompleteHandler()"
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.viewer.events.JobQueryEvent;
+			import com.esri.workflowManager.viewer.events.SelectJobEvent;
+			import com.esri.workflowManager.viewer.model.JobRelation;
+			import com.esri.workflowManager.viewer.model.JobSearch;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.binding.utils.ChangeWatcher;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.TreeEvent;
+						
+			private function creationCompleteHandler():void
+			{
+				ChangeWatcher.watch(Model.instance, "selectedJobRelationships", dataProviderChangeHandler);
+			}
+			
+			private function dataProviderChangeHandler(event:Event = null):void
+			{
+				// Allow time for data binding and event processing
+				callLater(expandTreeNodes);
+				
+				function expandTreeNodes():void
+				{
+					if (Model.instance.selectedJobRelationships && Model.instance.selectedJobRelationships.length > 0)
+					{
+						jobTree.validateNow();
+						expandItems(Model.instance.selectedJobRelationships);
+					}
+					
+					function expandItems(items:*):void
+					{
+						for each (var item:Object in items)
+						{
+							jobTree.expandItem(item, true);
+							// Only expand branch nodes up to and including the currently selected job
+							if ((item is JobRelation) && (item !== Model.instance.selectedJobRelationshipItem))
+							{
+								expandItems(item.children);
+							}
+						}
+					}
+				}
+			}
+			
+			private function onItemOpen(event:TreeEvent):void
+			{
+				var item:JobRelation = event.item as JobRelation;
+				if (item)
+				{
+					item.loadChildren();
+				}
+			}
+			
+			private function onItemChange(event:Event):void 
+			{
+				var jobId:int = -1
+				var item:JobRelation = event.currentTarget.selectedItem as JobRelation;
+				if (item)
+				{
+					jobId = item.jobId;
+					if (jobId > 0 && jobId != Model.instance.selectedJob.id)
+					{
+						if (isJobInCurrentList(jobId))
+						{
+							CentralDispatcher.dispatchEvent(new SelectJobEvent(jobId));
+						}	
+						else
+						{
+							Alert.show(Model.resource("ConfirmDisplaySelectedJob", [jobId]), 
+								Model.resource("Warning"), 
+								Alert.YES | Alert.NO, 
+								null, 
+								displaySelectedJobAlertListener, 
+								null, 
+								Alert.NO);
+						}
+					}
+				}
+				
+				function displaySelectedJobAlertListener(event:CloseEvent):void
+				{
+					if (event.detail == Alert.YES)
+					{
+						CentralDispatcher.dispatchEvent(new JobQueryEvent(
+							Model.resource("SearchResults"), JobSearch.fromTextSearch(jobId.toString())));
+						CentralDispatcher.dispatchEvent(new SelectJobEvent(jobId));
+					}
+				}
+			}
+			
+			private function isJobInCurrentList(jobId:int): Boolean
+			{
+				for each (var jobObject:Object in Model.instance.jobList)
+				{
+					if (jobId == jobObject[Model.instance.jobIdField])
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<mx:Tree id="jobTree" width="100%" height="100%" maxWidth="400"
+			 borderStyle="solid" borderThickness="1" borderColor="#063954"
+			 selectable="true"
+			 openDuration="0"
+			 folderClosedIcon="{null}" folderOpenIcon="{null}" defaultLeafIcon="{null}"
+			 dataProvider="{Model.instance.selectedJobRelationships}"
+			 itemOpen="onItemOpen(event)"
+			 change="onItemChange(event)"
+			 visible="{Model.instance.selectedJob != null}"
+			 />
+</supportClasses:BaseJobView>

@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009" 
+	xmlns:mx="library://ns.adobe.com/flex/mx"
+	paddingTop="10"
+	paddingBottom="10"
+	paddingLeft="10"
+	paddingRight="10"
+	creationComplete="creationCompleteHandler()"
+	>
+	<fx:Script>
+	<![CDATA[
+		import com.esri.holistic.CentralDispatcher;
+		import com.esri.workflowManager.tasks.supportClasses.AuxRecord;
+		import com.esri.workflowManager.tasks.supportClasses.AuxRecordContainer;
+		import com.esri.workflowManager.tasks.supportClasses.AuxRecordDescription;
+		import com.esri.workflowManager.tasks.supportClasses.AuxRecordValue;
+		import com.esri.workflowManager.tasks.supportClasses.FieldTypeEnum;
+		import com.esri.workflowManager.tasks.supportClasses.FieldValue;
+		import com.esri.workflowManager.utils.WMDateUtil;
+		import com.esri.workflowManager.viewer.events.ListValuesLoadedEvent;
+		import com.esri.workflowManager.viewer.events.PropertiesDirtyEvent;
+		import com.esri.workflowManager.viewer.model.Model;
+		import com.esri.workflowManager.wm_internal;
+		
+		import mx.controls.Alert;
+		import mx.controls.ComboBox;
+		import mx.controls.DateField;
+		import mx.controls.Text;
+		import mx.controls.TextInput;
+		import mx.utils.ObjectUtil;
+		
+		use namespace wm_internal;
+		
+		[Bindable] public var recordContainer:AuxRecordContainer;
+		[Bindable] public var editable:Boolean = false;
+		
+		private var isDirty:Boolean = false;
+		
+		private function creationCompleteHandler():void
+		{
+			CentralDispatcher.addEventListener(PropertiesDirtyEvent.TYPE, propertiesDirtyHandler, false, 0, true);
+			CentralDispatcher.addEventListener(ListValuesLoadedEvent.TYPE, listValuesLoadedHandler, false, 0, true);
+		}
+		
+		private function recordOf(container:AuxRecordContainer):AuxRecord
+		{
+			if (container && container.records && container.records.length > 0)
+			{
+				return container.records[0];
+			}
+			return null;
+		}
+		
+		private function changeHandler():void
+		{
+			isDirty = true;
+			CentralDispatcher.dispatchEvent(new PropertiesDirtyEvent(true));
+		}
+		
+		private function propertiesDirtyHandler(event:PropertiesDirtyEvent):void
+		{
+			// Clear the dirty flag after properties have been saved
+			if (!event.isDirty)
+			{
+				isDirty = false;
+			}
+		}
+		
+		private function listValuesLoadedHandler(event:ListValuesLoadedEvent):void
+		{
+			populateDomainLists(event);
+		}
+		
+		private function repeaterEndHandler():void
+		{
+			populateDomainLists();
+		}
+		
+		private function populateDomainLists(event:ListValuesLoadedEvent = null):void
+		{
+			var record:AuxRecord = recordOf(recordContainer);
+			if (record == null)
+			{
+				return;
+			}
+			if (event && (event.tableName != recordContainer.tableName))
+			{
+				return;
+			}
+			for (var i:int = 0; i < record.recordValues.length; i++)
+			{
+				var recordValue:AuxRecordValue = record.recordValues[i];
+				if (!isDomainField(recordValue))
+				{
+					continue;
+				}
+				if (event && (event.fieldName != recordValue.name))
+				{
+					continue;
+				}
+				var listValues:Array = Model.instance.listValueCache.get(recordContainer.tableName, recordValue.name);
+				if (listValues)
+				{
+					ComboBox(domainInputs[i]).dataProvider = listValues;
+					ComboBox(domainInputs[i]).selectedIndex = -1;
+					for each (var listVal:FieldValue in listValues)
+					{
+						if ((listVal.value == recordValue.data)
+							|| ((recordValue.dataType == FieldTypeEnum.DATE) 
+								&& (ObjectUtil.dateCompare(listVal.value as Date, recordValue.data as Date) == 0)))
+						{
+							Text(lblValues[i]).text = listVal.description;
+							ComboBox(domainInputs[i]).selectedItem = listVal;
+							break;
+						}
+					}
+				}
+			}
+		}
+		
+		private function formatData(recordValue:AuxRecordValue):Object
+		{
+			var data:Object = recordValue.data;
+			if ((recordValue.dataType == FieldTypeEnum.DATE) && (data is Date))
+			{
+				return dateFormatter.format(data as Date);
+			}
+			else if (data != null)
+			{
+				return data.toString();
+			}
+			else
+			{
+				return "";
+			}
+		}
+		
+		private function getMaxLength(recordValue:AuxRecordValue):int
+		{
+			switch (recordValue.dataType)
+			{
+				case FieldTypeEnum.INTEGER:
+				case FieldTypeEnum.SMALL_INTEGER:
+					return 25;
+				
+				case FieldTypeEnum.STRING:
+					return recordValue.length;
+				
+				case FieldTypeEnum.DOUBLE:
+				case FieldTypeEnum.SINGLE:
+				case FieldTypeEnum.DATE:
+				default:
+					return 0;
+			}
+		}
+		
+		public function validateInput():Boolean
+		{
+			var record:AuxRecord = recordOf(recordContainer);
+			if (record == null || !isDirty)
+			{
+				return true;
+			}
+			
+			var missingRequired:Boolean = false;
+			var missingFieldAliases:String = "";
+			
+			var newValue:Object;
+			for (var i:int = 0; i < record.recordValues.length; i++)
+			{
+				var recordValue:AuxRecordValue = record.recordValues[i];
+				if (!recordValue.canUpdate || !recordValue.required)
+				{
+					continue;
+				}
+				newValue = null;
+				switch (recordValue.dataType)
+				{
+					case FieldTypeEnum.DOUBLE:
+					case FieldTypeEnum.SINGLE:
+						newValue = parseNumberValue(i, recordValue);
+						break;
+					case FieldTypeEnum.INTEGER:
+					case FieldTypeEnum.SMALL_INTEGER:
+						newValue = parseIntegerValue(i, recordValue);
+						break;
+					case FieldTypeEnum.DATE:
+						newValue = parseDateValue(i, recordValue);
+						break;
+					case FieldTypeEnum.STRING:
+					default:
+						newValue = parseTextValue(i, recordValue);
+						break;
+				}
+				if (newValue == null || (newValue is String && String(newValue).length == 0))
+				{
+					if (!missingRequired)
+					{
+						try
+						{
+							if (txtInputs[i].visible)
+							{
+								txtInputs[i].setFocus();
+							}
+							else if (dateInputs[i].visible)
+							{
+								dateInputs[i].setFocus();
+							}
+							else if (domainInputs[i].visible)
+							{
+								domainInputs[i].setFocus();
+							}
+						}
+						catch (e:Error)
+						{
+							// ignore
+						}
+					}
+					missingRequired = true;
+					missingFieldAliases += "\n    * " + recordValue.alias;
+				}
+			}
+			
+			if (missingRequired)
+			{
+				Alert.show(Model.resource("ErrorEnterRequiredProperties") + missingFieldAliases, Model.resource("ErrorMissingRequiredProperty"));
+				return false;
+			}
+			return true;
+		}
+		
+		public function getChanges():AuxRecordDescription
+		{
+			var record:AuxRecord = recordOf(recordContainer);
+			if (record == null || !isDirty)
+			{
+				return null;
+			}
+			
+			var recordDesc:AuxRecordDescription = new AuxRecordDescription();
+			recordDesc.tableName = recordContainer.tableName;
+			recordDesc.recordId = record.id;
+			
+			var newValue:Object;
+			for (var i:int = 0; i < record.recordValues.length; i++)
+			{
+				var recordValue:AuxRecordValue = record.recordValues[i];
+				if (!recordValue.canUpdate)
+				{
+					continue;
+				}
+				newValue = null;
+				switch (recordValue.dataType)
+				{
+					case FieldTypeEnum.DOUBLE:
+					case FieldTypeEnum.SINGLE:
+						newValue = parseNumberValue(i, recordValue);
+						break;
+					case FieldTypeEnum.INTEGER:
+					case FieldTypeEnum.SMALL_INTEGER:
+						newValue = parseIntegerValue(i, recordValue);
+						break;
+					case FieldTypeEnum.DATE:
+						newValue = parseDateValue(i, recordValue);
+						break;
+					case FieldTypeEnum.STRING:
+					default:
+						newValue = parseTextValue(i, recordValue);
+						break;
+				}
+				recordDesc.properties[recordValue.name] = newValue;
+			}
+			
+			return recordDesc;
+		}
+		
+		private function parseTextValue(i:int, recordValue:AuxRecordValue):Object
+		{
+			if (isDomainField(recordValue))
+			{
+				var selectedItem:FieldValue = ComboBox(domainInputs[i]).selectedItem as FieldValue;
+				return (selectedItem ? selectedItem.value : null);
+			}
+			else
+			{
+				return TextInput(txtInputs[i]).text;
+			}
+		}
+		
+		private function parseIntegerValue(i:int, recordValue:AuxRecordValue):Object
+		{
+			var num:Number;
+			if (isDomainField(recordValue))
+			{
+				var selectedItem:FieldValue = ComboBox(domainInputs[i]).selectedItem as FieldValue;
+				num = (selectedItem ? (selectedItem.value as Number) : NaN);
+			}
+			else
+			{
+				var text:String = TextInput(txtInputs[i]).text;
+				num = parseInt(text);
+			}
+			return (isNaN(num) || !isFinite(num)) ? null : num;
+		}
+		
+		private function parseNumberValue(i:int, recordValue:AuxRecordValue):Object
+		{
+			var num:Number;
+			if (isDomainField(recordValue))
+			{
+				var selectedItem:FieldValue = ComboBox(domainInputs[i]).selectedItem as FieldValue;
+				num = (selectedItem ? (selectedItem.value as Number) : NaN);
+			}
+			else
+			{
+				var text:String = TextInput(txtInputs[i]).text;
+				num = parseFloat(text);
+			}
+			return (isNaN(num) || !isFinite(num)) ? null : num;
+		}
+		
+		private function parseDateValue(i:int, recordValue:AuxRecordValue):Object
+		{
+			var date:Date;
+			if (isDomainField(recordValue))
+			{
+				var selectedItem:FieldValue = ComboBox(domainInputs[i]).selectedItem as FieldValue;
+				date = (selectedItem ? (selectedItem.value as Date) : null);
+			}
+			else
+			{
+				date = DateField(dateInputs[i]).selectedDate;
+				date = WMDateUtil.convertToMidday(date);
+			}
+			return (date == null) ? null : WMDateUtil.toJsonDate(date);
+		}
+		
+		private function isDomainField(recordValue:AuxRecordValue):Boolean
+		{
+			return recordValue.isListValued();
+		}
+		private function isEditableDomainField(recordValue:AuxRecordValue):Boolean
+		{
+			return (recordValue.canUpdate && recordValue.isListValued());
+		}
+		private function isEditableDateField(recordValue:AuxRecordValue):Boolean
+		{
+			return (recordValue.canUpdate && !recordValue.isListValued() && recordValue.dataType == FieldTypeEnum.DATE);
+		}
+		private function isEditableTextField(recordValue:AuxRecordValue):Boolean
+		{
+			return (recordValue.canUpdate && !recordValue.isListValued() && recordValue.dataType != FieldTypeEnum.DATE);
+		}
+		private function isRequiredEditableField(recordValue:AuxRecordValue):Boolean
+		{
+			return (recordValue.canUpdate && recordValue.required);
+		}
+		private function isReadOnlyField(recordValue:AuxRecordValue):Boolean
+		{
+			return !recordValue.canUpdate;
+		}
+		
+	]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:DateFormatter id="dateFormatter" 
+						  formatString="{Model.instance.configModel.jobPropertiesDateFormat}"/>
+	</fx:Declarations>
+	
+	<mx:Label color="#000000" fontWeight="bold" fontSize="12"
+			  text="{recordContainer.tableAlias}"/>
+	<mx:Grid>
+		<mx:Repeater id="valuesRepeater" 
+					 dataProvider="{recordOf(recordContainer).recordValues}" 
+					 repeatEnd="repeaterEndHandler()"
+					 >
+			<mx:GridRow paddingTop="2">
+				<mx:GridItem width="100%" verticalAlign="middle" horizontalAlign="right">
+					<mx:HBox horizontalGap="0" verticalAlign="middle">
+						<mx:Label color="#043458" fontWeight="bold"
+								  text="{AuxRecordValue(valuesRepeater.currentItem).alias}" />
+					</mx:HBox>
+				</mx:GridItem>
+				<mx:GridItem verticalAlign="middle">
+					<!-- Handle different data types and view/edit modes -->
+					
+					<!-- any type, read-only -->
+					<mx:Text id="lblValues"
+						text="{formatData(AuxRecordValue(valuesRepeater.currentItem))}"
+						visible="{!editable || isReadOnlyField(AuxRecordValue(valuesRepeater.currentItem))}"
+						includeInLayout="{!editable || isReadOnlyField(AuxRecordValue(valuesRepeater.currentItem))}"
+						/>
+					
+					<!-- non-date types, editable -->
+					<mx:TextInput id="txtInputs"
+						text="{AuxRecordValue(valuesRepeater.currentItem).data}"
+						maxChars="{getMaxLength(AuxRecordValue(valuesRepeater.currentItem))}"
+						change="changeHandler()"
+						visible="{editable &amp;&amp; isEditableTextField(AuxRecordValue(valuesRepeater.currentItem))}"
+						includeInLayout="{editable &amp;&amp; isEditableTextField(AuxRecordValue(valuesRepeater.currentItem))}"
+						/>
+					
+					<!-- date type, editable -->
+					<mx:DateField id="dateInputs"
+						selectedDate="{AuxRecordValue(valuesRepeater.currentItem).data as Date}"
+						change="changeHandler()"
+						visible="{editable &amp;&amp; isEditableDateField(AuxRecordValue(valuesRepeater.currentItem))}"
+						includeInLayout="{editable &amp;&amp; isEditableDateField(AuxRecordValue(valuesRepeater.currentItem))}"
+						/>
+					
+					<!-- any type, editable, domain-valued -->
+					<mx:ComboBox id="domainInputs"
+						labelField="description"
+						change="changeHandler()"
+						visible="{editable &amp;&amp; isEditableDomainField(AuxRecordValue(valuesRepeater.currentItem))}"
+						includeInLayout="{editable &amp;&amp; isEditableDomainField(AuxRecordValue(valuesRepeater.currentItem))}"
+						/>
+					
+					<mx:Label color="#043458" fontStyle="italic" 
+						text="@Resource(bundle='WMResources',key='RequiredExtendedProperty')"
+						visible="{editable &amp;&amp; isRequiredEditableField(AuxRecordValue(valuesRepeater.currentItem))}"
+						includeInLayout="{editable &amp;&amp; isRequiredEditableField(AuxRecordValue(valuesRepeater.currentItem))}"
+						/>
+				</mx:GridItem>
+			</mx:GridRow>
+		</mx:Repeater>
+	</mx:Grid>
+</mx:VBox>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 label="@Resource(bundle='WMResources',key='MultipleJobsFound')" 
+		 minWidth="200" 
+		 verticalGap="0" 
+		 paddingLeft="5" 
+		 paddingRight="5"
+		 resizeEffect="{Resize}" 
+		 verticalAlign="middle" 
+		 backgroundColor="#B5CAD6" 
+		 backgroundAlpha="0.7">                
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.viewer.events.SelectJobEvent;
+			
+			import mx.effects.Resize;
+			
+			[Bindable] public var jobs:Array; /*of int*/
+			
+			private function jobLinkButtonClickHandler(event:Event):void
+			{
+				var item:int = event.currentTarget.getRepeaterItem();
+				CentralDispatcher.dispatchEvent(new SelectJobEvent(item));
+			}
+		]]>
+	</fx:Script>
+	
+	<mx:Label text="@Resource(bundle='WMResources',key='SelectOneOfTheFollowing')" 
+			  fontWeight="bold" 
+			  color="#043458"/>         
+	<mx:VBox width="100%" 
+			 minWidth="0" 
+			 maxHeight="80" 
+			 minHeight="0">
+		<mx:Repeater id="jobsRepeater" 
+					 dataProvider="{jobs}">
+			<mx:LinkButton styleName="reportLinkButton" 
+						   label="{jobsRepeater.currentItem}" 
+						   click="jobLinkButtonClickHandler(event)" />
+		</mx:Repeater>	
+	</mx:VBox>
+</mx:VBox>

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 styleName="popUpBox"
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.WorkflowConflicts;
+			import com.esri.workflowManager.tasks.supportClasses.WorkflowOption;
+			import com.esri.workflowManager.tasks.supportClasses.WorkflowStepInfo;
+			import com.esri.workflowManager.viewer.events.ResolveConflictEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.managers.PopUpManager;
+			
+			[Bindable] public var conflicts:WorkflowConflicts;
+			
+			private function btnOK_clickHandler():void
+			{
+				var selectedOption:WorkflowOption = cboOptions.selectedItem as WorkflowOption;
+				if (selectedOption)
+				{
+					CentralDispatcher.dispatchEvent(new ResolveConflictEvent(Model.instance.selectedJob.id,
+													   						 conflicts.stepId,
+													   						 selectedOption));
+				}
+				PopUpManager.removePopUp(this);
+			}
+
+			private function btnCancel_clickHandler():void
+			{
+				PopUpManager.removePopUp(this);
+			}
+			
+			private function getOptionLabel(item:Object):String
+			{
+				var option:WorkflowOption = item as WorkflowOption;
+				if (!option)
+				{
+					return "";
+				}
+				if (option.steps.length == 0)
+				{
+					return option.returnCode.toString();
+				}
+				var label:String = "";
+				for each (var step:WorkflowStepInfo in option.steps)
+				{
+					if (label.length > 0)
+						label += " + ";
+					label += step.name;
+				}
+				return label;
+			}
+		]]>
+	</fx:Script>
+	
+	<mx:Canvas width="100%">
+		<mx:Label text="@Resource(bundle='WMResources',key='ChooseNextStep')" 
+				  fontWeight="bold" 
+				  color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox width="100%" 
+			 horizontalAlign="center" 
+			 backgroundColor="#93afbe" 
+			 backgroundAlpha="1" 
+			 paddingTop="10" 
+			 paddingBottom="10" 
+			 paddingLeft="10" 
+			 paddingRight="10">
+		<mx:ComboBox id="cboOptions" 
+					 minWidth="200"
+					 dataProvider="{conflicts.options}" 
+					 labelFunction="getOptionLabel"/>
+		<mx:Spacer height="5"/>
+		<mx:HBox width="100%" horizontalAlign="right">
+			<mx:Button label="@Resource(bundle='WMResources',key='OK')" click="btnOK_clickHandler()" />
+			<mx:Button label="@Resource(bundle='WMResources',key='Cancel')" click="btnCancel_clickHandler()" />
+		</mx:HBox>
+	</mx:VBox>
+</mx:VBox>

@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:components="com.esri.workflowManager.viewer.components.*"
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							creationComplete="creationCompleteHandler()" 
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.tasks.supportClasses.Step;
+			import com.esri.workflowManager.tasks.supportClasses.StepExecutionTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.StepPlatformTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.WorkflowPathDisplayDetails;
+			import com.esri.workflowManager.tasks.supportClasses.WorkflowStepDisplayDetails;
+			import com.esri.workflowManager.viewer.events.ExecuteStepEvent;
+			import com.esri.workflowManager.viewer.events.MarkAsDoneEvent;
+			import com.esri.workflowManager.viewer.events.RecreateWorkflowEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.utils.URLUtil;
+			
+			import mx.binding.utils.ChangeWatcher;
+			import mx.controls.Alert;
+			import mx.core.FlexGlobals;
+			import mx.events.CloseEvent;
+			import mx.events.PropertyChangeEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.AsyncResponder;
+			
+			[Bindable] private var _canRun:Boolean = false;
+			[Bindable] private var _canMarkAsDone:Boolean = false;
+			[Bindable] private var _hasJobDependency:Boolean = false;
+			
+			private function creationCompleteHandler():void
+			{
+				ChangeWatcher.watch(Model.instance, "selectedJobCurrentSteps", currentStepsChangeHandler);
+			}
+			
+			private function currentStepsChangeHandler(event:PropertyChangeEvent):void
+			{
+				if (Model.instance.selectedJobCurrentSteps == null)
+				{
+					return;
+				}
+				if (Model.instance.selectedJobCurrentSteps.length == 1)
+				{
+					var step:Step = Model.instance.selectedJobCurrentSteps[0];
+					setWorkflowToolsStatus(step);
+					lblCurrentStep.text = getStepLabel(step);
+				}
+			}
+			
+			private function setWorkflowToolsStatus(step:Step):void
+			{
+				_canRun = false;
+				_hasJobDependency = false;
+				
+				if (step == null)
+				{
+					_canMarkAsDone = false;
+					return;
+				}
+				
+				var executionType:int = step.stepType.executionType;
+				_canMarkAsDone = (step.canSkip || step.hasBeenExecuted 
+					|| (executionType == StepExecutionTypeEnum.PROCEDURAL));
+				
+				if (executionType != StepExecutionTypeEnum.PROCEDURAL)
+				{
+					Model.instance.workflowTask.canRunStep(Model.instance.selectedJob.id, step.id,
+												  Model.instance.currentUserInfo.userName,
+												  new AsyncResponder(onCanRunResult, onCanRunFault));
+				}
+				
+				function onCanRunResult(canRun:int, token:Object):void
+				{
+					_canRun = (canRun == 1);
+					
+					// Check for job dependencies 
+					if (canRun == 2 || canRun == 3 || canRun == 4 || canRun == 14)
+					{
+						lblJobDependency.text = Model.resource("StepHasJobDependency", [step.name]);
+						_hasJobDependency = true;
+					}
+					else
+					{
+						lblJobDependency.text = "";
+						_hasJobDependency = false;
+					}
+				}
+				function onCanRunFault(data:Object, token:Object):void
+				{
+					Alert.show(Model.resource("ErrorLoadingWorkflowInfo") + "\n\n" + data.toString(), Model.resource("ErrorTitle"));
+				}
+			}
+			
+			private function getStepLabel(item:Object):String
+			{
+				if (item is Step)
+				{
+					var step:Step = item as Step;
+					for each (var jobDisplayStep:WorkflowStepDisplayDetails in Model.instance.selectedJobDisplaySteps)
+					{
+						if (jobDisplayStep.stepId == step.id)
+						{
+							return jobDisplayStep.label;
+						}
+					}
+					return step.name;
+				}	
+				return " ";
+			}
+			
+			private function btnMarkComplete_clickHandler():void
+			{
+				if (Model.instance.selectedJob.stage == JobStageEnum.CLOSED 
+					|| Model.instance.isSelectedJobOnHold)
+				{
+					return;
+				}
+				
+				var step:Step;
+				if (Model.instance.selectedJobCurrentSteps.length > 1)
+				{
+					step = cboCurrentSteps.selectedItem as Step;
+				}
+				else if (Model.instance.selectedJobCurrentSteps.length == 1)
+				{
+					step = Model.instance.selectedJobCurrentSteps[0];
+				}
+				if (step == null)
+				{
+					return;
+				}
+				
+				// Determine if the current step is the last step in the workflow
+        		var closeJobAfter:Boolean = Model.instance.autoCloseJob; 
+        		for each (var path:WorkflowPathDisplayDetails in Model.instance.selectedJobDisplayPaths)
+        		{
+        			if (path.sourceStepId == step.id)
+        			{
+        				closeJobAfter = false;
+						break;
+        			}
+        		}
+				
+				// Mark the step as completed on the server
+				if (step.canSkip || step.hasBeenExecuted 
+					|| step.stepType.executionType == StepExecutionTypeEnum.PROCEDURAL)
+				{
+					CentralDispatcher.dispatchEvent(new MarkAsDoneEvent(Model.instance.selectedJob.id, step.id, closeJobAfter));
+				}
+				else
+				{
+					Alert.show(Model.resource("ErrorCannotSkipStep"), Model.resource("ErrorCannotMarkStepDone"));
+					return;
+				}
+			}
+
+			private function btnExecuteStep_clickHandler():void
+			{
+				if (Model.instance.selectedJob.stage == JobStageEnum.CLOSED 
+					|| Model.instance.isSelectedJobOnHold)
+				{
+					return;
+				}
+				if (!_canRun)
+				{
+					Alert.show(Model.resource("ErrorStepNotRunnable"), Model.resource("ErrorCannotRunStep"));
+					return;
+				}
+				
+				var step:Step;
+				if (Model.instance.selectedJobCurrentSteps.length > 1)
+				{
+					step = cboCurrentSteps.selectedItem as Step;
+				}
+				else if (Model.instance.selectedJobCurrentSteps.length == 1)
+				{
+					step = Model.instance.selectedJobCurrentSteps[0];
+				}
+				if (step == null)
+				{
+					return;
+				}
+				
+				var platform:int = step.stepType.supportedPlatform;
+				if ((platform != StepPlatformTypeEnum.BOTH) 
+					&& (platform != StepPlatformTypeEnum.SERVER))
+				{
+					Alert.show(Model.resource("ErrorStepNotWebEnabled"), Model.resource("ErrorCannotRunStep"));
+					return;
+				}
+				if (step.stepType.executionType == StepExecutionTypeEnum.PROCEDURAL)
+				{
+					Alert.show(Model.resource("ErrorProceduralStepNotRunnable"), Model.resource("ErrorCannotRunStep"));
+					return;
+				}
+				
+				// Determine if the current step is the last step in the workflow
+				var closeJobAfter:Boolean = false;
+				if (step.selfCheck)
+				{
+					closeJobAfter = Model.instance.autoCloseJob;
+	        		for each (var path:WorkflowPathDisplayDetails in Model.instance.selectedJobDisplayPaths)
+	        		{
+	        			if (path.sourceStepId == step.id)
+	        			{
+	        				closeJobAfter = false;
+							break;
+	        			}
+	        		}
+	   			}
+				
+				// Execute certain step types on the server (essentially anything but questions).
+				// This is necessary in order to record that a step has been executed.
+				switch (step.stepType.executionType)
+				{
+					case StepExecutionTypeEnum.EXECUTABLE:
+					case StepExecutionTypeEnum.FUNCTION:
+					case StepExecutionTypeEnum.FILE:
+					case StepExecutionTypeEnum.URL:
+					case StepExecutionTypeEnum.PROCEDURAL:
+						CentralDispatcher.dispatchEvent(new ExecuteStepEvent(Model.instance.selectedJob.id, step.id, closeJobAfter));
+						break;
+				}
+				
+				// Handle client-side execution of certain step types
+				switch (step.stepType.executionType)
+				{
+					case StepExecutionTypeEnum.URL:
+						parseURLToken(step.stepType.program);
+						break;
+					case StepExecutionTypeEnum.FILE:
+						try
+						{
+							var fileURL:String = Model.instance.workflowTask.getStepFileURL(Model.instance.selectedJob.id, step.id);
+							navigateToURL(new URLRequest(fileURL), "_blank");
+						}
+						catch (e:Error)
+						{
+							Alert.show(Model.resource("ErrorOpeningFile") + "\n\n" + e.message, Model.resource("ErrorCannotRunStep"));
+						}
+						break;
+					case StepExecutionTypeEnum.QUESTION:
+						var executeQuestionStepBox:ExecuteQuestionStepBox = new ExecuteQuestionStepBox();
+						executeQuestionStepBox.initializeQuestionStep(step);
+						PopUpManager.addPopUp(executeQuestionStepBox, FlexGlobals.topLevelApplication.parentDocument, true);
+						PopUpManager.centerPopUp(executeQuestionStepBox);
+						break;
+				}
+			}
+			
+			private function recreateWorkflow_clickHandler(event:MouseEvent):void
+			{
+				if (Model.instance.selectedJob.stage == JobStageEnum.CLOSED)
+					return;
+				
+				CentralDispatcher.dispatchEvent(new RecreateWorkflowEvent(Model.instance.selectedJob.id));
+			}
+			
+			private function parseURLToken(urlToParse:String):void
+			{
+				Model.instance.tokenTask.parseTokens(
+					Model.instance.selectedJob.id,
+					urlToParse,
+					Model.instance.currentUserInfo.userName,
+					new AsyncResponder(onParseTokensResult, onParseTokensFault));
+					
+				function onParseTokensResult(result:String, token:Object):void
+				{
+					openURL(result);
+				}
+				function onParseTokensFault(data:Object, token:Object):void
+				{
+					// The parseToken request failed, open the URL as-is.
+					// (server versions prior to 10.1 SP1 do not have the parseToken request)
+					openURL(urlToParse);
+				}
+			}
+			
+			private function openURL(url:String):void
+			{
+				try
+				{
+					// Use absolute URL path when constructing the attachment link. 
+					// Call internal URLUtil tool since mx.utils.URLUtil.getProtocol() 
+					// doesn't work for protocols without a slash after the colon 
+					// (e.g. mailto:).
+					navigateToURL(new URLRequest(URLUtil.getAbsolutePathURL(url)), "_blank");
+				}
+				catch (e:Error)
+				{
+					Alert.show(Model.resource("ErrorOpeningURL") + "\n\n" + e.message, Model.resource("ErrorCannotRunStep"));
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<fx:Boolean id="waiting">{
+			Model.instance.isWorkflowLoading 
+			|| Model.instance.isStepExecuting 
+			|| Model.instance.isMarkingStepAsDone
+		}</fx:Boolean>
+		
+		<fx:Boolean id="workable">{
+			Model.instance.selectedJobCurrentSteps.length &gt; 0 
+			&amp;&amp; Model.instance.selectedJob != null
+			&amp;&amp; Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; !Model.instance.isSelectedJobOnHold 
+			&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName
+			&amp;&amp; !_hasJobDependency
+		}</fx:Boolean>
+		
+		<fx:Boolean id="selectedJobNotNull">{
+			Model.instance.selectedJob != null 
+		}</fx:Boolean>
+		
+		<fx:Boolean id="canRecreateWorkflow">{
+			Model.instance.selectedJob != null 
+			&amp;&amp; Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canRecreateWorkflow
+		}</fx:Boolean>
+	</fx:Declarations>
+	
+	<supportClasses:controlBarContent>
+		<mx:HBox paddingLeft="20" verticalAlign="middle"
+				 visible="{Model.instance.selectedJob != null}"
+				 includeInLayout="{Model.instance.selectedJob != null}"
+				 >
+			<mx:LinkButton label="@Resource(bundle='WMResources',key='RecreateWorkflow')" 
+						   visible="{canRecreateWorkflow}"
+						   click="recreateWorkflow_clickHandler(event)"/>
+		</mx:HBox>
+	</supportClasses:controlBarContent>			
+	
+	<mx:HBox verticalAlign="middle" height="45" visible="{waiting}" includeInLayout="{waiting}">
+		<components:Spinner id="spinner" tickColor="#000000" autoPlay="true"/>
+		<mx:Label text="@Resource(bundle='WMResources',key='LoadingWorkflow')" 
+				  visible="{Model.instance.isWorkflowLoading}"
+				  includeInLayout="{Model.instance.isWorkflowLoading}"/>
+		<mx:Label text="@Resource(bundle='WMResources',key='ExecutingStep')" 
+				  visible="{Model.instance.isStepExecuting}"
+				  includeInLayout="{Model.instance.isStepExecuting}"/>
+		<mx:Label text="@Resource(bundle='WMResources',key='MarkingStepAsDone')" 
+				  visible="{Model.instance.isMarkingStepAsDone}"
+				  includeInLayout="{Model.instance.isMarkingStepAsDone}"/>
+	</mx:HBox>
+	<mx:VBox visible="{!waiting &amp;&amp; _hasJobDependency}" includeInLayout="{!waiting &amp;&amp; _hasJobDependency}">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label id="lblJobDependency" color="#043458" fontWeight="bold" />
+		</mx:HBox>
+	</mx:VBox>
+	<mx:VBox visible="{!waiting &amp;&amp; workable}" 
+			 includeInLayout="{!waiting &amp;&amp; workable}">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label color="#043458" fontWeight="bold"
+					  text="@Resource(bundle='WMResources',key='CurrentSteps')"/>
+			<mx:Label id="lblCurrentStep" 
+					  visible="{Model.instance.selectedJobCurrentSteps.length == 1}"
+					  includeInLayout="{Model.instance.selectedJobCurrentSteps.length == 1}"/>
+			<mx:ComboBox id="cboCurrentSteps" 
+						 selectedIndex="-1" 
+						 prompt="@Resource(bundle='WMResources',key='SelectPrompt')"
+						 dataProvider="{Model.instance.selectedJobCurrentSteps}" 
+						 labelFunction="getStepLabel" 
+						 height="20"
+						 change="{setWorkflowToolsStatus(cboCurrentSteps.selectedItem as Step)}"
+						 visible="{Model.instance.selectedJobCurrentSteps.length &gt; 1}"
+						 includeInLayout="{Model.instance.selectedJobCurrentSteps.length &gt; 1}"/>
+		</mx:HBox>
+		<mx:HBox paddingLeft="101" verticalAlign="middle">
+			<mx:Button id="btnExecuteStep" 
+					   label="@Resource(bundle='WMResources',key='ExecuteStep')" 
+					   click="btnExecuteStep_clickHandler()" 
+					   enabled="{_canRun}" 
+					   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/executeStep.png')"/>
+			<mx:Button id="btnMarkComplete"
+					   label="@Resource(bundle='WMResources',key='MarkAsComplete')" 
+					   click="btnMarkComplete_clickHandler()" 
+					   enabled="{_canMarkAsDone}" 
+					   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/markAsComplete.png')"/>		
+		</mx:HBox>
+	</mx:VBox>
+	<supportClasses:ImageBox width="100%" height="100%" minHeight="0" minWidth="0" visible="{selectedJobNotNull}">
+		<mx:Image id="workflowImage" source="{Model.instance.workflowImageSource}"/>
+	</supportClasses:ImageBox>
+</supportClasses:BaseJobView>

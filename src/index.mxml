@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:Application xmlns:fx="http://ns.adobe.com/mxml/2009"
+				xmlns:mx="library://ns.adobe.com/flex/mx"
+				xmlns:view="com.esri.workflowManager.viewer.view.*" 
+				xmlns:components="com.esri.workflowManager.viewer.components.*"
+				xmlns:controller="com.esri.workflowManager.viewer.controller.*"
+				layout="absolute"
+				horizontalAlign="left" 
+				verticalGap="0"
+				horizontalScrollPolicy="off"
+				verticalScrollPolicy="off"
+				pageTitle="ArcGIS Workflow Manager"
+				applicationComplete="applicationCompleteHandler()" 
+				>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.viewer.events.ApplicationCompleteEvent;
+			import com.esri.workflowManager.viewer.events.LogoutEvent;
+			import com.esri.workflowManager.viewer.events.MenuEvent;
+			import com.esri.workflowManager.viewer.events.ViewEvent;
+			import com.esri.workflowManager.viewer.model.LoginViewType;
+			import com.esri.workflowManager.viewer.model.MenuType;
+			import com.esri.workflowManager.viewer.model.Model;
+			import com.esri.workflowManager.viewer.view.CreateJobBox;
+			import com.esri.workflowManager.viewer.view.SearchBox;
+			import com.esri.workflowManager.viewer.view.supportClasses.BaseJobView;
+			
+			import mx.collections.ArrayCollection;
+			import mx.core.FlexGlobals;
+			import mx.core.INavigatorContent;
+			import mx.core.UIComponent;
+			import mx.effects.Fade;
+			import mx.effects.Resize;
+			import mx.effects.WipeRight;
+			import mx.managers.PopUpManager;
+			
+			[Bindable] private var toolboxExpanded:Boolean = true;
+			[Bindable] private var jobViewTypes:ArrayCollection;
+			
+			private function applicationCompleteHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new ApplicationCompleteEvent());
+			}
+			
+			private function btnQueries_clickHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new MenuEvent(MenuType.QUERIES));
+			}
+
+			private function btnChart_clickHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new MenuEvent(MenuType.CHART));
+			}
+
+			private function btnReports_clickHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new MenuEvent(MenuType.REPORTS));
+			}
+			
+			private function btnCreate_clickHandler():void
+			{
+				var createJobBox:CreateJobBox = PopUpManager.createPopUp(FlexGlobals.topLevelApplication.parentDocument, CreateJobBox, true) as CreateJobBox;
+				PopUpManager.centerPopUp(createJobBox);
+			}
+			
+			private function btnSearch_clickHandler():void
+			{
+				var searchBox:SearchBox = PopUpManager.createPopUp(FlexGlobals.topLevelApplication.parentDocument, SearchBox, true) as SearchBox;
+				PopUpManager.centerPopUp(searchBox);
+			}
+			
+			private function btnLogout_clickHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new LogoutEvent());
+			}
+			
+			private function menuTypeLabel(menuType:int):String
+			{
+				switch (menuType)
+				{
+					case MenuType.QUERIES:
+						return Model.resource("Queries");
+					case MenuType.CHART:
+						return Model.resource("Charts");
+					case MenuType.REPORTS:
+						return Model.resource("Reports");
+				}
+				return "";
+			}
+			
+			private function initJobViews():void
+			{
+				// This assumes that all the ViewStack children implement INavigatorContent
+				jobViewTypes = new ArrayCollection(jobViews.getChildren());
+				jobViewType.selectedIndex = Model.instance.viewType;
+				onJobViewChange();
+			}
+			
+			private function changeJobView():void
+			{
+				if (jobViewType && jobViewType.selectedIndex >= 0)
+				{
+					CentralDispatcher.dispatchEvent(new ViewEvent(jobViewType.selectedIndex));
+				}
+			}
+			
+			private function onJobViewChange():void
+			{
+				// Remove any old control bar content
+				jobViewControlBarContent.removeAllChildren();
+				
+				// Add any new content to the control bar
+				var newContent:UIComponent = null;
+				var newJobView:INavigatorContent = jobViews.selectedChild;
+				if (newJobView is BaseJobView)
+				{
+					newContent = BaseJobView(newJobView).controlBarContent;
+				}
+				else
+				{
+					try
+					{
+						newContent = newJobView["controlBarContent"] as UIComponent;
+					}
+					catch (e:*)
+					{
+						// ignore
+					}
+				}
+				if (newContent)
+				{
+					jobViewControlBarContent.addChild(newContent);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+
+	<fx:Metadata>
+		[ResourceBundle("WMResources")]
+	</fx:Metadata>
+
+	<fx:Declarations>
+		<controller:Registry id="registry" />
+		<mx:WipeRight id="wipeRight" duration="300"/>
+	</fx:Declarations>
+
+	<fx:Style source="Blue.css"/>
+
+	<mx:HBox width="100%" height="100%"
+			 top="54" 
+			 paddingTop="150" 
+			 horizontalAlign="center"
+			 visible="{Model.instance.loginViewType == LoginViewType.LOGGED_OUT}" 
+			 showEffect="{Fade}" hideEffect="{Fade}"
+			 >
+		<view:LoginBox/>
+	</mx:HBox>
+	<mx:HBox width="100%" height="100%"
+			 top="54" 
+			 paddingBottom="10" paddingLeft="10" paddingRight="10" paddingTop="10"
+			 visible="{Model.instance.loginViewType == LoginViewType.LOGGED_IN}" 
+			 showEffect="{Fade}" hideEffect="{Fade}"
+			 >
+		<mx:HBox height="100%" resizeEffect="{Resize}">
+			<mx:Image source="@Embed(source='/com/esri/workflowManager/viewer/assets/toolbox.png')" 
+					  toolTip="@Resource(bundle='WMResources',key='MaximizeTooltip')"
+					  buttonMode="true"
+					  visible="{!toolboxExpanded}" includeInLayout="{!toolboxExpanded}"
+					  click="toolboxExpanded = true;"
+					  />
+			<mx:VBox width="300" height="100%"
+					 verticalGap="0"
+					 visible="{toolboxExpanded}" includeInLayout="{toolboxExpanded}">
+				<mx:ApplicationControlBar width="100%" 
+										  height="30">
+					<mx:Canvas width="100%" 
+							   height="100%">
+						<mx:Label verticalCenter="0" 
+								  fontSize="11" 
+								  text="{menuTypeLabel(Model.instance.menuType)}" 
+								  fontWeight="bold"/>
+						<mx:Image right="0" 
+								  verticalCenter="0" 
+								  source="@Embed(source='/com/esri/workflowManager/viewer/assets/collapseLeft.png')"
+								  buttonMode="true"
+								  toolTip="@Resource(bundle='WMResources',key='MinimizeTooltip')"
+								  click="{toolboxExpanded = false;}"/>
+					</mx:Canvas>
+				</mx:ApplicationControlBar>
+				<mx:ViewStack styleName="menuBox" creationPolicy="all" width="100%" height="100%"
+							  selectedIndex="{Model.instance.menuType}">
+					<view:QueryBox width="100%" height="100%" showEffect="{wipeRight}" hideEffect="{wipeRight}"/>
+					<view:ChartBox width="100%" height="100%" showEffect="{wipeRight}" hideEffect="{wipeRight}" />
+					<view:ReportBox width="100%" height="100%" showEffect="{wipeRight}" hideEffect="{wipeRight}"/>
+				</mx:ViewStack>
+				<mx:Canvas width="100%">
+					<mx:Button styleName="largeButtonStyle" 
+							   click="btnQueries_clickHandler()" 
+							   label="@Resource(bundle='WMResources',key='Queries')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/queries.png')" 
+							   width="100%" 
+							   height="28"/>
+					<mx:Button styleName="largeButtonStyle" 
+							   click="btnChart_clickHandler()" 
+							   label="@Resource(bundle='WMResources',key='Charts')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/charts.png')" 
+							   width="100%" 
+							   height="28"  
+							   top="28"/>
+					<mx:Button styleName="largeButtonStyle" 
+							   click="btnReports_clickHandler()" 
+							   label="@Resource(bundle='WMResources',key='Reports')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/reports.png')" 
+							   width="100%" 
+							   height="28" 
+							   top="56"/>
+					<mx:Button styleName="largeButtonStyle" 
+							   click="btnSearch_clickHandler()" 
+							   label="@Resource(bundle='WMResources',key='FindJobs')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/findJobs.png')" 
+							   width="100%" 
+							   height="28" 
+							   top="84"/>
+					<mx:Button styleName="largeButtonStyle"
+							   includeInLayout="{Model.instance.privileges.canCreateJob}" 
+							   visible="{Model.instance.privileges.canCreateJob}" 
+							   click="btnCreate_clickHandler()" 
+							   label="@Resource(bundle='WMResources',key='CreateJob')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/createJob.png')" 
+							   width="100%" 
+							   height="28" 
+							   top="112"/>
+				</mx:Canvas>
+			</mx:VBox>
+		</mx:HBox>
+		<mx:VDividedBox width="100%" height="100%">
+			<mx:Canvas width="100%" height="100%" minHeight="30"
+					   horizontalScrollPolicy="off" verticalScrollPolicy="off"
+					   >
+				<mx:VBox width="100%" height="100%" verticalGap="0">
+					<mx:ApplicationControlBar width="100%" height="30" paddingTop="2" paddingBottom="2">
+						<mx:HBox width="100%" height="100%"
+								 verticalAlign="middle"
+								 includeInLayout="{Model.instance.selectedJob == null}"
+								 visible="{Model.instance.selectedJob == null}">
+							<mx:Label text="@Resource(bundle='WMResources',key='SelectJobToEdit')" fontWeight="bold"/>
+						</mx:HBox>
+						<mx:HBox width="100%" height="100%"
+								 verticalAlign="middle"
+								 includeInLayout="{Model.instance.selectedJob != null}"
+								 visible="{Model.instance.selectedJob != null}">
+							<components:IconComboBox id="jobViewType"
+													 dataProvider="{jobViewTypes}"
+													 rowCount="{jobViewTypes.length}" 
+													 selectedIndex="{Model.instance.viewType}"
+													 change="changeJobView()"
+													 />
+							<mx:Label text="{Model.instance.selectedJob.name}" fontWeight="bold"/>
+							<mx:HBox id="jobViewControlBarContent" />
+						</mx:HBox>
+					</mx:ApplicationControlBar>
+					<mx:ViewStack id="jobViews" 
+								  creationPolicy="all" 
+								  width="100%" height="100%" 
+								  selectedIndex="{Model.instance.viewType}"
+								  creationComplete="initJobViews()"
+								  change="onJobViewChange()"
+								  >
+						<view:PropertiesBox label="{Model.resource('Properties')}"
+											icon="@Embed(source='/com/esri/workflowManager/viewer/assets/properties.png')"
+											/>
+						<view:WorkflowBox label="{Model.resource('Workflow')}"
+										  icon="@Embed(source='/com/esri/workflowManager/viewer/assets/workflow.png')"
+										  />
+						<view:AOIBox label="{Model.resource('AOI')}"
+									 icon="@Embed(source='/com/esri/workflowManager/viewer/assets/aoi.png')"
+									 />
+						<view:AttachmentsBox label="{Model.resource('Attachments')}"
+											 icon="@Embed(source='/com/esri/workflowManager/viewer/assets/attachments.png')"
+											 />
+						<view:NotesBox label="{Model.resource('Notes')}"
+									   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/notes.png')"
+									   />
+						<view:HistoryBox label="{Model.resource('History')}"
+										 icon="@Embed(source='/com/esri/workflowManager/viewer/assets/history.png')"
+										 />
+						<view:JobRelationshipBox label="{Model.resource('Relationships')}"
+												 icon="@Embed(source='/com/esri/workflowManager/viewer/assets/relationships.png')"
+												 />
+						<view:HoldsBox label="{Model.resource('Holds')}"
+												 icon="@Embed(source='/com/esri/workflowManager/viewer/assets/holds.png')"
+												 />
+					</mx:ViewStack>
+				</mx:VBox>
+			</mx:Canvas>
+			<view:JobListBox id="jobListBox" width="100%" height="220" minHeight="30"
+							 resizeEffect="{Resize}" />
+		</mx:VDividedBox>
+	</mx:HBox>
+	<mx:Canvas width="100%" styleName="bannerCanvas" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		<mx:Image source="@Embed(source='/com/esri/workflowManager/viewer/assets/banner.jpg')"/>
+		<mx:VBox horizontalAlign="right" 
+				 right="10" 
+				 verticalCenter="0" 
+				 verticalGap="0"
+				 includeInLayout="{Model.instance.loginViewType == LoginViewType.LOGGED_IN}"
+				 visible="{Model.instance.loginViewType == LoginViewType.LOGGED_IN}"
+				 >
+			<mx:Label styleName="loggedInLabel" 
+					  text="{resourceManager.getString(Model.RESOURCE_BUNDLE,'LoggedInAs',[Model.instance.currentUserInfo.fullName])}" />
+			<mx:LinkButton label="@Resource(bundle='WMResources',key='LogOut')" 
+						   click="btnLogout_clickHandler()" 
+						   styleName="logoutLinkButton"/>
+		</mx:VBox>
+	</mx:Canvas>
+</mx:Application>

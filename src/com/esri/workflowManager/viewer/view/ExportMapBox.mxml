@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<mx:VBox xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:s="library://ns.adobe.com/flex/spark"
+		 styleName="popUpBox"
+		 creationComplete="creationCompleteHandler()"
+		 initialize="getPrintServiceInfo()"
+		 keyDown="keyDownHandler(event)"
+		 >
+	<fx:Script>
+		<![CDATA[
+			import com.esri.ags.events.PrintEvent;
+			import com.esri.ags.tasks.supportClasses.LayoutOptions;
+			import com.esri.ags.tasks.supportClasses.LegendLayer;
+			import com.esri.ags.tasks.supportClasses.LegendOptions;
+			import com.esri.ags.tasks.supportClasses.PrintParameters;
+			import com.esri.ags.tasks.supportClasses.PrintServiceInfo;
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.viewer.events.ExportMapEvent;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import mx.controls.Alert;
+			import mx.managers.PopUpManager;
+			import mx.rpc.AsyncResponder;
+			import mx.utils.StringUtil;
+			
+			private function creationCompleteHandler():void
+			{
+			}
+			
+			private function getPrintServiceInfo(): void
+			{
+				var serviceInfo:PrintServiceInfo = Model.instance.printTask.getServiceInfoLastResult;
+				if (serviceInfo)
+				{
+					populateDropDowns(serviceInfo);
+				}
+				else
+				{
+					Model.instance.printTask.getServiceInfo(new AsyncResponder(onServiceInfoResult, onServiceInfoFault));
+				}
+			}
+			
+			private function populateDropDowns(serviceInfo:PrintServiceInfo):void
+			{
+				layoutTemplates.dataProvider = serviceInfo.layoutTemplates;
+				for (var i:int = 0; i < layoutTemplates.dataProvider.length; i++)
+				{
+					var currentItem:String = layoutTemplates.dataProvider.getItemAt(i) as String;
+					if (currentItem == "A4 Landscape")
+					{
+						layoutTemplates.selectedIndex = i;
+					}
+				}
+				formats.dataProvider = serviceInfo.formats;
+			}
+			
+			private function onServiceInfoResult(serviceInfo:PrintServiceInfo, token:Object=null):void
+			{
+				populateDropDowns(serviceInfo);
+			}
+
+			private function onServiceInfoFault(data:Object, token:Object=null):void
+			{
+				Alert.show(Model.resource("ErrorLoadingPrintServiceInfo") + "\n\n" + 
+					data.toString(), Model.resource("ErrorTitle"));
+				PopUpManager.removePopUp(this);
+			}
+
+			private function exportMapBtn_clickHandler(event:Event):void
+			{
+				var printParameters:PrintParameters = new PrintParameters();
+				printParameters.map = Model.instance.map;
+				printParameters.format = formats.selectedItem;
+				printParameters.layoutTemplate= layoutTemplates.selectedItem;
+				
+				// layout options
+				var layoutOptions:LayoutOptions = new LayoutOptions();
+				layoutOptions.author = Model.resource("ExportMapAuthor");
+				layoutOptions.copyright = Model.resource("ExportMapCopyright"); 
+				layoutOptions.title = Model.resource("ExportMapTitle");
+				printParameters.layoutOptions = layoutOptions;
+
+				// legend
+				var legendLayer:LegendLayer = new LegendLayer();
+				legendLayer.layerId = Model.instance.aoiDynamicLayer.id;
+				var legendOptions:LegendOptions = new LegendOptions();
+				legendOptions.legendLayers = [ legendLayer ];
+				printParameters.layoutOptions.legendOptions = legendOptions;
+				
+				CentralDispatcher.dispatchEvent(new ExportMapEvent(printParameters));
+				PopUpManager.removePopUp(this);
+			}
+
+			private function btnCancel_clickHandler():void
+			{
+				PopUpManager.removePopUp(this);
+			}
+			
+			override protected function keyDownHandler(event:KeyboardEvent):void
+			{
+				if (event.keyCode == Keyboard.ESCAPE)
+				{
+					btnCancel_clickHandler();
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<mx:Canvas width="100%">
+		<mx:Label text="@Resource(bundle='WMResources',key='ExportMap')" 
+				  fontWeight="bold" 
+				  color="#ffffff"/>
+	</mx:Canvas>
+	<mx:VBox backgroundColor="#93afbe" backgroundAlpha="1"
+			 paddingTop="5" paddingBottom="5" paddingLeft="10" paddingRight="10"
+			 >
+		<mx:Label text="@Resource(bundle='WMResources',key='ExportLayoutTemplate')"/>
+		<s:DropDownList id="layoutTemplates"
+						width="175"
+						requireSelection="true"/>
+		<mx:Label text="@Resource(bundle='WMResources',key='ExportFormat')"/>
+		<s:DropDownList id="formats"
+						width="100"
+						dataProvider="{Model.instance.printTask.getServiceInfoLastResult.formats}"
+						requireSelection="true"/>
+		<mx:Spacer height="5" />
+		<mx:HBox width="100%" horizontalAlign="right">
+			<mx:Button label="@Resource(bundle='WMResources',key='Export')" 
+					   click="exportMapBtn_clickHandler(event)"/>
+			<mx:Button label="@Resource(bundle='WMResources',key='Cancel')" 
+					   click="btnCancel_clickHandler()"/>
+		</mx:HBox>
+	</mx:VBox>
+</mx:VBox>

@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2010 ESRI
+//
+// All rights reserved under the copyright laws of the United States.
+// You may freely redistribute and use this software, with or
+// without modification, provided you include the original copyright
+// and use restrictions. 
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<supportClasses:BaseJobView xmlns:fx="http://ns.adobe.com/mxml/2009"
+							xmlns:mx="library://ns.adobe.com/flex/mx"
+							xmlns:s="library://ns.adobe.com/flex/spark" 
+							xmlns:esri="http://www.esri.com/2008/ags"  
+							xmlns:supportClasses="com.esri.workflowManager.viewer.view.supportClasses.*"
+							usePadding="false"
+							creationComplete="creationCompleteHandler()" 
+							>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.ags.events.DrawEvent;
+			import com.esri.ags.events.MapMouseEvent;
+			import com.esri.ags.geometry.Extent;
+			import com.esri.ags.geometry.Geometry;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.geometry.Polygon;
+			import com.esri.ags.layers.Layer;
+			import com.esri.holistic.CentralDispatcher;
+			import com.esri.workflowManager.tasks.supportClasses.JobAssignmentTypeEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobStageEnum;
+			import com.esri.workflowManager.tasks.supportClasses.JobUpdateParameters;
+			import com.esri.workflowManager.viewer.events.AOIBoxCreationCompleteEvent;
+			import com.esri.workflowManager.viewer.events.AOIMapClickEvent;
+			import com.esri.workflowManager.viewer.events.BasemapEvent;
+			import com.esri.workflowManager.viewer.events.UpdateJobAOIEvent;
+			import com.esri.workflowManager.viewer.model.Basemap;
+			import com.esri.workflowManager.viewer.model.Model;
+			
+			import flashx.textLayout.conversion.TextConverter;
+			
+			import mx.binding.utils.ChangeWatcher;
+			import mx.controls.Alert;
+			import mx.controls.Button;
+			import mx.core.FlexGlobals;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.PropertyChangeEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.AsyncResponder;
+
+			private var _mapInitialized:Boolean = false;
+			private var _basemapChangeWatcher:ChangeWatcher;
+			
+			[Bindable] private var _drawToolsVisible:Boolean = false;			
+
+			private function creationCompleteHandler():void
+			{
+				CentralDispatcher.dispatchEvent(new AOIBoxCreationCompleteEvent(map, aoiDynamicLayer));
+				draw.addEventListener(DrawEvent.DRAW_END, drawEndHandler);
+				ChangeWatcher.watch(Model.instance, "selectedGraphic", selectedGraphicChangeHandler);
+				
+				if (Model.instance.configModel.basemaps != null)
+				{
+					initMap();
+				}
+				else
+				{
+					_basemapChangeWatcher = ChangeWatcher.watch(Model.instance.configModel, "basemaps", initMap);
+				}
+			}
+			
+			private function initMap(ignore:Event = null):void
+			{
+				if (_basemapChangeWatcher)
+				{
+					_basemapChangeWatcher.unwatch();
+					_basemapChangeWatcher = null;
+				}
+				if (_mapInitialized)
+				{
+					return;
+				}
+				
+				// Add the basemap layers
+				var initialBasemap:Basemap = null;
+				for each (var basemap:Basemap in Model.instance.configModel.basemaps)
+				{
+					for each (var layer:Layer in basemap.layers)
+					{						
+						map.addLayer(layer);
+					}
+					if (initialBasemap == null || basemap.isInitialBasemap)
+					{
+						initialBasemap = basemap;						
+					}
+				}
+				if (initialBasemap)
+				{
+					basemapBar.selectedIndex = Model.instance.configModel.basemaps.indexOf(initialBasemap);
+					CentralDispatcher.dispatchEvent(new BasemapEvent(initialBasemap));
+				}
+				
+				// Add the operational layers
+				if (Model.instance.configModel.aoiMapServiceVisibleLayers)
+				{
+					aoiDynamicLayer.visibleLayers = Model.instance.configModel.aoiMapServiceVisibleLayers;
+				}
+				map.addLayer(aoiDynamicLayer);
+				map.addLayer(selectedGraphicLayer);
+				map.addLayer(drawLayer);
+				
+				_mapInitialized = true;
+			}
+			
+			private function selectedGraphicChangeHandler(event:PropertyChangeEvent):void
+			{
+				drawLayer.clear();
+				draw.deactivate();
+				_drawToolsVisible = false;
+			}
+
+			private function basemapToggle_clickHandler(event:ItemClickEvent):void
+			{
+				CentralDispatcher.dispatchEvent(new BasemapEvent(event.item as Basemap)); 
+			}
+			
+			private function exportMap_clickHandler(event:MouseEvent):void
+			{
+				var exportMapBox:ExportMapBox = PopUpManager.createPopUp(FlexGlobals.topLevelApplication.parentDocument, ExportMapBox, true) as ExportMapBox;
+				PopUpManager.centerPopUp(exportMapBox);
+			}
+			
+			private function startClearLinkBar_itemClickHandler(event:ItemClickEvent):void
+			{
+				if (Model.instance.selectedJob.stage == JobStageEnum.CLOSED)
+				{
+					return;
+				}
+				switch (event.item.tag)
+				{
+					case "polygon":
+						draw.activate(DrawTool.POLYGON);						
+						break;
+					case "freehandPolygon":
+						draw.activate(DrawTool.FREEHAND_POLYGON);						
+						break;
+					case "clearAOI":
+						Alert.show(Model.resource("ConfirmClearAOI"), 
+								   Model.resource("ClearAOI"), 
+								   Alert.YES | Alert.NO, 
+								   null, 
+								   clearAOIAlertListener, 
+								   null, 
+								   Alert.NO);
+						break;
+				}
+			}
+			
+			private function clearAOIAlertListener(event:CloseEvent):void
+			{
+				if (event.detail == Alert.YES)
+				{
+					var params:JobUpdateParameters = new JobUpdateParameters();
+					params.jobId = Model.instance.selectedJob.id;
+					params.aoi = null;
+					params.clearAOI = true;
+					CentralDispatcher.dispatchEvent(new UpdateJobAOIEvent(params));
+				}
+			}
+			
+			private function drawLinkBar_itemClickHandler(event:ItemClickEvent):void
+			{
+				if (Model.instance.selectedJob.stage == JobStageEnum.CLOSED || 
+					Model.instance.isSelectedJobOnHold)
+				{
+					return;
+				}
+				switch (event.item.tag)
+				{
+					case "polygon":
+						draw.activate(DrawTool.POLYGON);
+						//(drawLinkBar.getChildAt(0) as Button).enabled = false;
+						//(drawLinkBar.getChildAt(1) as Button).enabled = true;
+						//(drawLinkBar.getChildAt(2) as Button).enabled = true;
+						break;
+					case "freehandPolygon":
+						draw.activate(DrawTool.FREEHAND_POLYGON);
+						//(drawLinkBar.getChildAt(0) as Button).enabled = true;
+						//(drawLinkBar.getChildAt(1) as Button).enabled = false;
+						//(drawLinkBar.getChildAt(2) as Button).enabled = true;
+						break;
+					case "endDrawing":
+						drawLayer.clear();
+						draw.deactivate();
+						_drawToolsVisible = false;
+						break;
+				}
+			}
+			
+			private function drawEndHandler(drawEvent:DrawEvent):void
+			{
+				var aoiGeometry:Geometry = drawEvent.graphic.geometry;
+				Alert.show(Model.resource("ConfirmSaveAOI"), 
+						   Model.resource("AOIChanged"), 
+						   Alert.YES | Alert.NO, 
+						   this, 
+						   saveAOIAlertListener, 
+						   null, 
+						   Alert.YES);
+				
+				function saveAOIAlertListener(alertEvent:CloseEvent):void
+				{
+					if (alertEvent.detail == Alert.YES)
+					{
+						if (aoiGeometry.type == Geometry.POLYGON)
+						{
+							// Simplify the polygon to remove any self-intersecting rings
+							Model.instance.geometryService.simplify([aoiGeometry], 
+								new AsyncResponder(simplifyResultHandler, simplifyFaultHandler));
+						}
+						else if (aoiGeometry.type == Geometry.EXTENT)
+						{
+							// Convert the extent into an equivalent polygon shape
+							updateAOI(convertExtentToPolygon(aoiGeometry as Extent));
+						}
+						else
+						{
+							// Unsupported AOI geometry type
+							drawLayer.clear();
+						}
+					}
+					else
+					{
+						drawLayer.clear();
+					}
+				}
+				function convertExtentToPolygon(extent:Extent):Polygon
+				{
+					var ring:Array = [
+						new MapPoint(extent.xmin, extent.ymin),
+						new MapPoint(extent.xmin, extent.ymax),
+						new MapPoint(extent.xmax, extent.ymax),
+						new MapPoint(extent.xmax, extent.ymin),
+						new MapPoint(extent.xmin, extent.ymin)
+					];
+					return new Polygon([ring], extent.spatialReference);
+				}
+				function simplifyResultHandler(geometries:Array/*of Geometry*/, token:Object = null):void
+				{
+					if (geometries && geometries.length > 0)
+					{
+						var aoiPolygon:Polygon = geometries[0] as Polygon;
+						if (aoiPolygon)
+						{
+							updateAOI(aoiPolygon);
+						}
+					}
+				}
+				function simplifyFaultHandler(data:Object, token:Object = null):void
+				{
+					Alert.show(Model.resource("ErrorUpdateJobAOI") + "\n\n" + data.toString(), Model.resource("ErrorTitle"));
+				}
+				function updateAOI(aoiPolygon:Polygon):void
+				{
+					var params:JobUpdateParameters = new JobUpdateParameters();
+					params.jobId = Model.instance.selectedJob.id;
+					params.aoi = aoiPolygon;
+					CentralDispatcher.dispatchEvent(new UpdateJobAOIEvent(params));
+				}
+			}
+			
+			private function btnZoomFullExtent_clickHandler():void
+			{
+				if (Model.instance.configModel.initialExtent)
+				{
+					map.extent = Model.instance.configModel.initialExtent;
+				}
+			}
+			
+			private function mapClickHandler(event:MapMouseEvent):void
+			{
+				if (!_drawToolsVisible)
+				{
+					CentralDispatcher.dispatchEvent(new AOIMapClickEvent(event.mapPoint));
+				}
+			}
+			
+			private function copyright_initializeHandler(event:FlexEvent):void
+			{
+				var htmlText:String = '(c) <a href="http://www.openstreetmap.org/" target="_blank">OpenStreetMap</a> contributors, '
+					+ '<a href="http://creativecommons.org/licenses/by-sa/2.0/" target="_blank">CC-BY-SA</a>';
+				copyright.textFlow = TextConverter.importToFlow(htmlText, TextConverter.TEXT_FIELD_HTML_FORMAT);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<fx:Boolean id="editable">{
+			Model.instance.selectedJob != null
+			&amp;&amp; Model.instance.selectedJob.stage != JobStageEnum.CLOSED 
+			&amp;&amp; Model.instance.privileges.canManageAOI 
+			&amp;&amp; (Model.instance.selectedJob.ownedBy == Model.instance.currentUserInfo.userName
+				|| (Model.instance.selectedJob.assignedType == JobAssignmentTypeEnum.ASSIGNED_TO_USER
+					&amp;&amp; Model.instance.selectedJob.assignedTo == Model.instance.currentUserInfo.userName)
+			)
+		}</fx:Boolean>
+		
+		<fx:Boolean id="selectedJobNotNull">{
+			Model.instance.selectedJob != null 
+		}</fx:Boolean>
+		
+		<esri:ArcGISDynamicMapServiceLayer id="aoiDynamicLayer" 
+			url="{Model.instance.configModel.aoiMapServiceURL}"
+			layerDefinitions="{Model.instance.aoiDynamicLayerDefinitions}"
+			alpha="{Model.instance.configModel.aoiMapServiceAlpha}" 
+			/>
+		
+		<esri:GraphicsLayer id="selectedGraphicLayer" graphicProvider="{Model.instance.selectedGraphic}">
+			<esri:symbol>
+				<esri:SimpleFillSymbol style="solid" color="#68A2BA" alpha="0.7">
+					<esri:SimpleLineSymbol style="solid" color="#68A2BA" alpha="1" width="3"/>
+				</esri:SimpleFillSymbol>
+			</esri:symbol>
+		</esri:GraphicsLayer>
+		
+		<esri:GraphicsLayer id="drawLayer"/>
+		
+		<esri:DrawTool id="draw" map="{map}" graphicsLayer="{drawLayer}">
+			<esri:fillSymbol>
+				<esri:SimpleFillSymbol style="solid" color="#2b5d78" alpha="0.9">
+					<esri:SimpleLineSymbol style="solid" color="#2b5d78" alpha="1" width="3"/>
+				</esri:SimpleFillSymbol>
+			</esri:fillSymbol>
+		</esri:DrawTool>
+	</fx:Declarations>
+	
+	<supportClasses:controlBarContent>
+		<mx:HBox paddingLeft="20" verticalAlign="middle"
+				 visible="{Model.instance.selectedJob != null}"
+				 includeInLayout="{Model.instance.selectedJob != null}"
+				 >
+			<mx:LinkButton label="@Resource(bundle='WMResources',key='ExportMap')" 
+						   click="exportMap_clickHandler(event)"/>
+			<mx:LinkBar id="startClearLinkBar"
+						itemClick="startClearLinkBar_itemClickHandler(event)"
+						visible="{editable}" includeInLayout="{editable}">
+				<fx:Array>
+					<fx:Object tag="polygon"
+							   label="@Resource(bundle='WMResources',key='Polygon')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/polygonDraw.png')"/>
+					<fx:Object tag="freehandPolygon"
+							   label="@Resource(bundle='WMResources',key='FreehandPolygon')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/freehandDraw.png')"/>
+					<fx:Object tag="clearAOI"
+							   label="@Resource(bundle='WMResources',key='ClearAOI')" 
+							   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/clearAOI.png')"/>
+				</fx:Array>
+			</mx:LinkBar>
+			<mx:Label text="@Resource(bundle='WMResources',key='AOINotDefined')"
+					  fontWeight="bold" color="#ff3333"
+					  visible="{Model.instance.selectedGraphic == null}"
+					  includeInLayout="{Model.instance.selectedGraphic == null}"/>
+		</mx:HBox>
+	</supportClasses:controlBarContent>
+	
+	<mx:Canvas width="100%" height="100%">
+		<esri:Map id="map" 
+				  mapClick="mapClickHandler(event)" 
+				  openHandCursorVisible="false" 
+				  extent="{Model.instance.configModel.initialExtent}"
+				  />
+		<mx:Button width="21" height="21" left="10" top="10"
+				   paddingBottom="0" paddingLeft="0" paddingRight="0" paddingTop="0"
+				   toolTip="@Resource(bundle='WMResources',key='ZoomFullExtentTooltip')"
+				   icon="@Embed(source='/com/esri/workflowManager/viewer/assets/fullExtent.png')"
+				   click="btnZoomFullExtent_clickHandler()"
+				   />
+		<mx:ToggleButtonBar id="basemapBar" top="10" right="10" 
+							dataProvider="{Model.instance.configModel.basemaps}" 
+							itemClick="basemapToggle_clickHandler(event)"
+							/>
+		<s:RichEditableText id="copyright" bottom="2" horizontalCenter="0"
+							editable="false" selectable="false"
+							initialize="copyright_initializeHandler(event)"
+							visible="{Model.instance.isOSMBasemap}" 
+							/>
+	</mx:Canvas>
+</supportClasses:BaseJobView>
