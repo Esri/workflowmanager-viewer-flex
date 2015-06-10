@@ -3,12 +3,13 @@ ArcGIS Workflow Manager Flex viewer - Manage your workflows on the web.
 
 [View it live](http://workflowsample.esri.com/wmflex/)
 
-![App](https://raw.github.com/ArcGIS/workflowmanager-viewer-flex/master/workflowmanager-viewer-flex.png)
+![App](https://raw.github.com/Esri/workflowmanager-viewer-flex/master/workflowmanager-viewer-flex.png)
 
 ## Features
 * Ready-to-deploy GIS web client workflow manager application for ArcGIS Server.
 * A complete workflow management application, that allows for ease and efficiency toward managing and tracking business workflows.
 * Easily configurable to meet custom business needs and requirements - no programming skills required to deploy.
+* Source code available for Flex developers that want to customize the web application.
 
 ## Instructions
 
@@ -55,6 +56,6 @@ limitations under the License.
 
 A copy of the license is available in the repository's [license.txt]( https://raw.github.com/Esri/workflowmanager-viewer-flex/master/license.txt) file.
 
-[](Esri Tags: ArcGIS Workflow Manager Viewer)
+[](Esri Tags: ArcGIS Workflow Manager Flex Viewer)
 [](Esri Language: Flex)
 
