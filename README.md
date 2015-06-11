@@ -1,8 +1,6 @@
 # workflowmanager-viewer-flex
 ArcGIS Workflow Manager Flex viewer - Manage your workflows on the web. 
 
-Source code as well as ready-to-deploy GIS web client.
-
 [View it live](http://workflowsample.esri.com/wmflex/)
 
 ![App](workflowmanager-viewer-flex.jpg)
