@@ -17,10 +17,10 @@
 		<ymax>7000000</ymax>
 	</initialExtent>
 	<workflowService>
-		<url>http://workflowsample.esri.com:6080/arcgis/rest/services/Workflow/WMServer</url>
+		<url>http://workflowsample.esri.com/arcgis/rest/services/Workflow/WMServer</url>
 	</workflowService>
 	<aoiMapService>
-		<url>http://workflowsample.esri.com:6080/arcgis/rest/services/AOI/MapServer</url>
+		<url>http://workflowsample.esri.com/arcgis/rest/services/AOI/MapServer</url>
 		<!-- The layer ID of the jobs AOI layer within the map service -->
 		<aoiLayerId>0</aoiLayerId>
 		<!-- List of layer IDs to show in the AOI map service (optional) -->
