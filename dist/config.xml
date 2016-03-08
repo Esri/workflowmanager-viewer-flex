@@ -22,7 +22,7 @@
 	<aoiMapService>
 		<url>http://workflowsample.esri.com/arcgis/rest/services/AOI/MapServer</url>
 		<!-- The layer ID of the jobs AOI layer within the map service -->
-		<aoiLayerId>0</aoiLayerId>
+		<aoiLayerId>1</aoiLayerId>
 		<!-- List of layer IDs to show in the AOI map service (optional) -->
 		<visibleLayers></visibleLayers>
 		<!-- Opacity of the map layer -->
