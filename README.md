@@ -61,9 +61,3 @@ A copy of the license is available in the repository's [LICENSE.txt](LICENSE.txt
 Acknowledgments for the third‐parties whose software has been used in
 permissible forms with ESRI products can be found at 
 [ArcGIS Workflow Manager - Web Viewer Acknowlegements.pdf](dist/ArcGIS Workflow Manager - Web Viewer Acknowlegements.pdf).
-
-
-
-[](Esri Tags: ArcGIS Workflow Manager Flex Viewer)
-[](Esri Language: Flex)
-
