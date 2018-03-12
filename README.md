@@ -11,6 +11,11 @@ ArcGIS Workflow Manager Flex viewer - Manage your workflows on the web.
 * Easily configurable to meet custom business needs and requirements - no programming skills required to deploy.
 * Source code available for Flex developers that want to customize the web application.
 
+## Support
+[Flex 3.x versions of Web API and Viewers were retired](https://support.esri.com/en/Products/More-Products/legacy-products/arcgis-api-for-flex/3-x#product-support) on June 1, 2016.  This retirement includes the Workflow Manager Flex Viewer.
+
+We recommend you upgrade to the [Workflow Manager JavaScript Viewer](https://github.com/esri/workflowmanager-viewer-js).
+
 ## Instructions
 
 Deployment:
